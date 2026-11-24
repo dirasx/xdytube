@@ -15,3 +15,7 @@ The macOS build reuses the Stream Tube data directory so existing settings and p
 ## Source and license
 
 Build on Apple Silicon with `bash packaging/macos/build-app.sh`. Upstream source and attribution are preserved under the [MIT License](LICENSE).
+
+## Для разработчиков
+
+[Передача проекта xdytube](docs/HANDOFF.md) — изменения форка, сборка и текущие ограничения.
