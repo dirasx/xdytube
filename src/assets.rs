@@ -14,6 +14,9 @@ pub struct Assets;
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
         if path == "brand/logo.svg" {
+            #[cfg(target_os = "macos")]
+            return Ok(Some(Cow::Borrowed(include_bytes!("../assets/macos-logo.svg"))));
+            #[cfg(not(target_os = "macos"))]
             return Ok(Some(Cow::Borrowed(include_bytes!("../assets/logo.svg"))));
         }
         if let Some(hex) = path.strip_prefix("brand/logo-").and_then(|p| p.strip_suffix(".svg")) {

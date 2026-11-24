@@ -1,6 +1,6 @@
 # xdytube
 
-<img src="assets/logo.png" alt="xdytube icon" width="96">
+<img src="assets/macos-logo.png" alt="xdytube icon" width="96">
 
 A personal, just-for-fun fork of [Stream Tube Desktop](https://github.com/Avaneesh-Inamdar/Stream-Tube-Desktop) by Avaneesh Inamdar.
 
