@@ -174,8 +174,47 @@ pub fn browse_continue(token: &str) -> Result<crate::api::types::Page> {
 
 // ───────────── sign-in through a browser ─────────────
 
-/// Chromium-based browsers the sign-in can use, most likely first.
-fn find_browser() -> Option<(String, PathBuf)> {
+#[cfg(test)]
+#[test]
+fn browser_choices_include_chrome_and_yandex_once() {
+    let dir = std::env::temp_dir().join(format!("xdytube-browser-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let yandex = dir.join("yandex");
+    let chrome = dir.join("chrome");
+    let chrome_alternate = dir.join("chrome-alternate");
+    for path in [&yandex, &chrome, &chrome_alternate] {
+        std::fs::write(path, []).unwrap();
+    }
+    let choices = browser_choices([
+        ("Yandex Browser", yandex.clone()),
+        ("Google Chrome", chrome.clone()),
+        ("Google Chrome", chrome_alternate),
+        ("Brave", dir.join("missing")),
+    ]);
+    std::fs::remove_dir_all(dir).unwrap();
+    assert_eq!(choices.iter().map(|browser| browser.name).collect::<Vec<_>>(), ["Yandex Browser", "Google Chrome"]);
+    assert_eq!(choices[0].executable, yandex);
+    assert_eq!(choices[1].executable, chrome);
+}
+
+#[derive(Clone)]
+pub struct Browser {
+    pub name: &'static str,
+    executable: PathBuf,
+}
+
+fn browser_choices(candidates: impl IntoIterator<Item = (&'static str, PathBuf)>) -> Vec<Browser> {
+    let mut browsers: Vec<Browser> = Vec::new();
+    for (name, executable) in candidates {
+        if executable.is_file() && !browsers.iter().any(|browser| browser.name == name) {
+            browsers.push(Browser { name, executable });
+        }
+    }
+    browsers
+}
+
+/// Installed Chromium-based browsers that the sign-in can open.
+pub fn installed_browsers() -> Vec<Browser> {
     #[cfg(windows)]
     {
         let pf = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into());
@@ -191,27 +230,26 @@ fn find_browser() -> Option<(String, PathBuf)> {
             ("Brave", format!(r"{local}\BraveSoftware\Brave-Browser\Application\brave.exe")),
             ("Chromium", format!(r"{local}\Chromium\Application\chrome.exe")),
         ];
-        candidates.into_iter().map(|(n, p)| (n.to_string(), PathBuf::from(p))).find(|(_, p)| p.is_file())
+        browser_choices(candidates.into_iter().map(|(name, path)| (name, PathBuf::from(path))))
     }
     #[cfg(not(windows))]
     {
+        let mut candidates = Vec::new();
         #[cfg(target_os = "macos")]
         {
-            let home = std::env::var("HOME").unwrap_or_default();
+            let mut directories = vec![PathBuf::from("/Applications")];
+            directories.extend(dirs::home_dir().map(|home| home.join("Applications")));
             let apps = [
-                ("Yandex Browser", "Yandex.app/Contents/MacOS/Yandex"),
                 ("Google Chrome", "Google Chrome.app/Contents/MacOS/Google Chrome"),
+                ("Yandex Browser", "Yandex.app/Contents/MacOS/Yandex"),
                 ("Microsoft Edge", "Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
                 ("Brave", "Brave Browser.app/Contents/MacOS/Brave Browser"),
                 ("Chromium", "Chromium.app/Contents/MacOS/Chromium"),
                 ("Vivaldi", "Vivaldi.app/Contents/MacOS/Vivaldi"),
             ];
-            for (n, rel) in apps {
-                for dir in ["/Applications".to_string(), format!("{home}/Applications")] {
-                    let p = PathBuf::from(&dir).join(rel);
-                    if p.is_file() {
-                        return Some((n.to_string(), p));
-                    }
+            for (name, relative_path) in apps {
+                for directory in &directories {
+                    candidates.push((name, directory.join(relative_path)));
                 }
             }
         }
@@ -226,22 +264,15 @@ fn find_browser() -> Option<(String, PathBuf)> {
             ("Microsoft Edge", "microsoft-edge-stable"),
             ("Vivaldi", "vivaldi"),
         ];
-        let path = std::env::var_os("PATH")?;
-        for (n, bin) in names {
-            for dir in std::env::split_paths(&path) {
-                let p = dir.join(bin);
-                if p.is_file() {
-                    return Some((n.to_string(), p));
+        if let Some(path) = std::env::var_os("PATH") {
+            for (name, binary) in names {
+                for directory in std::env::split_paths(&path) {
+                    candidates.push((name, directory.join(binary)));
                 }
             }
         }
-        None
+        browser_choices(candidates)
     }
-}
-
-/// Name of the browser the sign-in will open, if there is one.
-pub fn browser_name() -> Option<String> {
-    find_browser().map(|(n, _)| n)
 }
 
 fn local_agent() -> ureq::Agent {
@@ -296,15 +327,12 @@ fn youtube_cookies(list: &[Value]) -> BTreeMap<String, String> {
 
 /// Opens a browser window for the user to sign in to YouTube and waits until they
 /// have. Returns the account name. `cancel` stops waiting and closes the browser.
-pub fn browser_sign_in(cancel: Arc<AtomicBool>) -> Result<String> {
-    let (_, exe) = find_browser().ok_or_else(|| {
-        anyhow!("No supported browser found. Install Yandex Browser, Google Chrome, Microsoft Edge, Brave, Chromium or Vivaldi, or import a cookies.txt file instead.")
-    })?;
+pub fn browser_sign_in(browser: Browser, cancel: Arc<AtomicBool>) -> Result<String> {
     let profile = crate::store::data_dir().join("signin-browser");
     let _ = std::fs::remove_dir_all(&profile);
     std::fs::create_dir_all(&profile)?;
     let port = std::net::TcpListener::bind(("127.0.0.1", 0))?.local_addr()?.port();
-    let mut cmd = std::process::Command::new(&exe);
+    let mut cmd = std::process::Command::new(&browser.executable);
     cmd.arg(format!("--user-data-dir={}", profile.display()))
         .arg(format!("--remote-debugging-port={port}"))
         .arg("--remote-allow-origins=http://127.0.0.1")

@@ -354,14 +354,25 @@ pub struct LoginFlow {
 #[derive(Default)]
 pub struct WebLoginFlow {
     error: Option<String>,
-    browser: Option<String>,
+    browsers: Vec<crate::api::web::Browser>,
+    browser: Option<&'static str>,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     attempt: u64,
 }
 
 pub fn open_web_sign_in(cx: &mut App) {
     if let Some(app) = cx.try_global::<AppHandle>().and_then(|h| h.0.upgrade()) {
-        app.update(cx, |a, cx| a.start_web_sign_in(cx));
+        app.update(cx, |a, cx| {
+            if a.web_login.cancel.is_some() {
+                toast(cx, "Wait for the previous browser sign-in to finish closing.");
+                return;
+            }
+            a.web_login.browsers = crate::api::web::installed_browsers();
+            a.web_login.browser = None;
+            a.web_login.error = None;
+            a.dialog = Some(Dialog::WebSignIn);
+            cx.notify();
+        });
     }
 }
 
@@ -376,7 +387,7 @@ pub fn import_web_cookies(cx: &mut App) {
             if let Some(app) = cx.try_global::<AppHandle>().and_then(|h| h.0.upgrade()) {
                 app.update(cx, |a, cx| {
                     if matches!(a.dialog, Some(Dialog::WebSignIn)) {
-                        if let Some(c) = a.web_login.cancel.take() {
+                        if let Some(c) = &a.web_login.cancel {
                             c.store(true, std::sync::atomic::Ordering::Relaxed);
                         }
                         a.dialog = None;
@@ -790,18 +801,17 @@ impl AppView {
         .detach();
     }
 
-    fn start_web_sign_in(&mut self, cx: &mut Context<Self>) {
+    fn start_web_sign_in(&mut self, browser: crate::api::web::Browser, cx: &mut Context<Self>) {
         use std::sync::atomic::{AtomicBool, Ordering};
-        if let Some(c) = self.web_login.cancel.take() {
-            c.store(true, Ordering::Relaxed);
+        if self.web_login.cancel.is_some() {
+            return;
         }
         self.web_login.attempt += 1;
         let attempt = self.web_login.attempt;
         let cancel = Arc::new(AtomicBool::new(false));
         self.web_login.cancel = Some(cancel.clone());
         self.web_login.error = None;
-        self.web_login.browser = crate::api::web::browser_name();
-        self.dialog = Some(Dialog::WebSignIn);
+        self.web_login.browser = Some(browser.name);
         cx.notify();
         // closing the dialog any way at all stops the sign-in and closes the browser
         let watch = cancel.clone();
@@ -810,7 +820,9 @@ impl AppView {
             if watch.load(Ordering::Relaxed) {
                 return;
             }
-            let open = this.update(cx, |t, _| t.web_login.attempt == attempt && matches!(t.dialog, Some(Dialog::WebSignIn))).unwrap_or(false);
+            let open = this.update(cx, |t, _| {
+                t.web_login.attempt == attempt && t.web_login.cancel.is_some() && matches!(t.dialog, Some(Dialog::WebSignIn))
+            }).unwrap_or(false);
             if !open {
                 watch.store(true, Ordering::Relaxed);
                 return;
@@ -819,12 +831,13 @@ impl AppView {
         .detach();
         cx.spawn(async move |this, cx| {
             let c2 = cancel.clone();
-            let res = blocking(move || crate::api::web::browser_sign_in(c2)).await;
+            let res = blocking(move || crate::api::web::browser_sign_in(browser, c2)).await;
             let _ = this.update(cx, |t, cx| {
                 if t.web_login.attempt != attempt {
                     return;
                 }
                 t.web_login.cancel = None;
+                t.web_login.browser = None;
                 match res {
                     Ok(name) => {
                         if matches!(t.dialog, Some(Dialog::WebSignIn)) {
@@ -847,7 +860,6 @@ impl AppView {
 
     fn render_web_sign_in(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = pal(cx);
-        let browser = self.web_login.browser.clone().unwrap_or_else(|| "browser".into());
         let mut col = div().flex().flex_col().gap_4().child(
             div()
                 .flex()
@@ -865,28 +877,13 @@ impl AppView {
             .child("Use a cookies.txt file instead")
             .on_click(|_, _, cx| import_web_cookies(cx));
         let cancel = pill("wsi-cancel", None, "Cancel", cx).on_click(cx.listener(|this, _, _, cx| {
-            if let Some(c) = this.web_login.cancel.take() {
+            if let Some(c) = &this.web_login.cancel {
                 c.store(true, std::sync::atomic::Ordering::Relaxed);
             }
             this.dialog = None;
             cx.notify();
         }));
-        if let Some(err) = &self.web_login.error {
-            col = col.child(div().text_sm().text_color(p.text2).child(err.clone())).child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .child(cookies_link)
-                    .child(
-                        div()
-                            .flex()
-                            .gap_2()
-                            .child(cancel)
-                            .child(pill("wsi-retry", Some("refresh-cw"), "Try again", cx).on_click(cx.listener(|this, _, _, cx| this.start_web_sign_in(cx)))),
-                    ),
-            );
-        } else {
+        if let Some(browser) = self.web_login.browser {
             col = col
                 .child(
                     div()
@@ -912,6 +909,21 @@ impl AppView {
                         .child(cancel),
                 )
                 .child(cookies_link);
+        } else {
+            let prompt = if self.web_login.browsers.is_empty() {
+                "No supported browser found. Install Google Chrome, Yandex Browser, Microsoft Edge, Brave, Chromium or Vivaldi."
+            } else {
+                "Choose a browser to sign in to YouTube."
+            };
+            col = col
+                .children(self.web_login.error.as_ref().map(|error| div().text_sm().text_color(p.text2).child(error.clone())))
+                .child(div().text_sm().text_color(p.text2).child(prompt))
+                .child(div().flex().flex_col().gap_2().children(self.web_login.browsers.iter().cloned().map(|browser| {
+                    pill(SharedString::from(format!("wsi-browser-{}", browser.name)), None, browser.name, cx)
+                        .justify_start()
+                        .on_click(cx.listener(move |this, _, _, cx| this.start_web_sign_in(browser.clone(), cx)))
+                })))
+                .child(div().flex().items_center().justify_between().child(cookies_link).child(cancel));
         }
         col.into_any_element()
     }
