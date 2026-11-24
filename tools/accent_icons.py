@@ -68,26 +68,28 @@ def logo(accent):
     ImageDraw.Draw(gmask).rounded_rectangle([2 * k, 2 * k, 62 * k, 62 * k], radius=17 * k, fill=255)
     out.alpha_composite(Image.composite(gloss, Image.new("RGBA", (S, S), (0, 0, 0, 0)), gmask))
     d = ImageDraw.Draw(out)
-    w = int(3.6 * k)
-    for (x1, x2, y, op) in [(11, 21, 24, 0.65), (8, 22, 32, 0.9), (11, 21, 40, 0.65)]:
-        layer = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-        ld = ImageDraw.Draw(layer)
-        ld.line([(x1 * k, y * k), (x2 * k, y * k)], fill=(255, 255, 255, int(255 * op)), width=w)
-        r = w / 2
-        for cx in (x1 * k, x2 * k):
-            ld.ellipse([cx - r, y * k - r, cx + r, y * k + r], fill=(255, 255, 255, int(255 * op)))
-        out.alpha_composite(layer)
-    tri = [(29 * k, 19.5 * k), (48.5 * k, 32 * k), (29 * k, 44.5 * k)]
-    d.polygon(tri, fill=(255, 255, 255, 255))
-    d.line(tri + [tri[0]], fill=(255, 255, 255, 255), width=int(5 * k), joint="curve")
-    for (x, y) in tri:
-        r = 2.5 * k
-        d.ellipse([x - r, y - r, x + r, y + r], fill=(255, 255, 255, 255))
+    white = (255, 255, 255, 255)
+    for start, end in [((13, 23), (28, 41)), ((28, 23), (13, 41))]:
+        points = [(x * k, y * k) for x, y in (start, end)]
+        d.line(points, fill=white, width=int(5.5 * k))
+        r = 2.75 * k
+        for x, y in points:
+            d.ellipse([x - r, y - r, x + r, y + r], fill=white)
+    tri = [(36 * k, 21 * k), (52 * k, 32 * k), (36 * k, 43 * k)]
+    d.polygon(tri, fill=white)
+    d.line(tri + [tri[0]], fill=white, width=int(4 * k), joint="curve")
+    for x, y in tri:
+        r = 2 * k
+        d.ellipse([x - r, y - r, x + r, y + r], fill=white)
     return out
 
 
 def main():
     os.makedirs(OUT, exist_ok=True)
+    primary = logo(BRAND)
+    primary.save(os.path.join(OUT, "..", "logo.png"))
+    primary.save(os.path.join(OUT, "..", "streamtube.ico"),
+                 sizes=[(16, 16), (32, 32), (48, 48), (128, 128), (256, 256)])
     for a in ACCENTS:
         img = logo(a)
         name = f"{a:06x}"

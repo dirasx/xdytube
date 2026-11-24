@@ -52,9 +52,63 @@ impl Route {
     }
 }
 
+#[cfg(all(test, target_os = "macos"))]
+mod player_fullscreen_tests {
+    use super::PlayerFullscreen;
+
+    #[test]
+    fn player_does_not_toggle_an_already_fullscreen_app_window() {
+        let mut mode = PlayerFullscreen::default();
+        assert!(!mode.toggle(true));
+        assert!(mode.active());
+        assert!(!mode.toggle(true));
+        assert!(!mode.active());
+    }
+
+    #[test]
+    fn fullscreen_player_from_windowed_mode_restores_the_window() {
+        let mut mode = PlayerFullscreen::default();
+        assert!(mode.toggle(false));
+        assert!(mode.active());
+        assert!(mode.toggle(false));
+        assert!(!mode.active());
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Default)]
+enum PlayerFullscreen {
+    #[default]
+    Off,
+    InFullscreenWindow,
+    Borderless,
+}
+
+#[cfg(target_os = "macos")]
+impl PlayerFullscreen {
+    fn active(self) -> bool {
+        !matches!(self, Self::Off)
+    }
+
+    /// Returns whether to toggle the borderless window used by the player.
+    fn toggle(&mut self, window_is_fullscreen: bool) -> bool {
+        let (next, toggle_window) = match *self {
+            Self::Off if window_is_fullscreen => (Self::InFullscreenWindow, false),
+            Self::Off => (Self::Borderless, true),
+            Self::InFullscreenWindow => (Self::Off, false),
+            Self::Borderless => (Self::Off, true),
+        };
+        *self = next;
+        toggle_window
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 pub struct UiState {
     pub theater: bool,
+    keep_playing_on_navigation: bool,
+    #[cfg(target_os = "macos")]
+    player_fullscreen: PlayerFullscreen,
     #[cfg(not(target_os = "macos"))]
     fullscreen: bool,
     pub sidebar_open: bool,
@@ -121,7 +175,7 @@ mod link_tests {
 
     #[test]
     fn links_keep_time_and_playlist() {
-        let r = route_from_link("streamtube://open?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DdQw4w9WgXcQ%26t%3D1m30s%26list%3DPL123");
+        let r = route_from_link("xdytube://open?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DdQw4w9WgXcQ%26t%3D1m30s%26list%3DPL123");
         assert!(matches!(r, Some(Route::Watch { ref id, playlist: Some(ref l), start: Some(s) }) if id == "dQw4w9WgXcQ" && l == "PL123" && s == 90.0), "{r:?}");
         let r = route_from_link("https://youtu.be/dQw4w9WgXcQ?t=42");
         assert!(matches!(r, Some(Route::Watch { start: Some(s), playlist: None, .. }) if s == 42.0), "{r:?}");
@@ -163,32 +217,27 @@ pub fn go_back(window: &mut Window, cx: &mut App) {
 /// Leaves the watch page while keeping playback (mini player).
 pub fn go_back_keep_playing(window: &mut Window, cx: &mut App) {
     if let Some(app) = cx.try_global::<AppHandle>().and_then(|h| h.0.upgrade()) {
-        app.update(cx, |a, cx| {
-            if let Some((previous, _)) = a.history.last() {
-                if matches!(previous, Route::Watch { .. }) && is_fullscreen(window, cx) {
-                    toggle_fullscreen(window, cx);
-                }
-                a.back(window, cx);
-            } else {
-                a.go(Route::Home, window, cx);
-            }
-        });
+        app.update(cx, |a, cx| a.open_miniplayer(window, cx));
     }
 }
 
-pub fn is_fullscreen(_window: &Window, _cx: &App) -> bool {
-    // The green traffic light can change fullscreen without a player action.
+pub fn is_fullscreen(_window: &Window, cx: &App) -> bool {
+    let ui = cx.global::<UiState>();
     #[cfg(target_os = "macos")]
-    return _window.is_fullscreen();
+    return ui.player_fullscreen.active();
     #[cfg(not(target_os = "macos"))]
-    return _cx.global::<UiState>().fullscreen;
+    return ui.fullscreen;
 }
 
 pub fn toggle_fullscreen(window: &mut Window, cx: &mut App) {
-    window.toggle_fullscreen();
+    let ui = cx.global_mut::<UiState>();
+    #[cfg(target_os = "macos")]
+    if ui.player_fullscreen.toggle(window.is_fullscreen()) {
+        window.toggle_simple_fullscreen();
+    }
     #[cfg(not(target_os = "macos"))]
     {
-        let ui = cx.global_mut::<UiState>();
+        window.toggle_fullscreen();
         ui.fullscreen = !ui.fullscreen;
     }
     cx.refresh_windows();
@@ -851,7 +900,7 @@ impl AppView {
                             div()
                                 .text_xs()
                                 .text_color(p.text3)
-                                .child("Videos you watch in Stream Tube then show in your YouTube history, and your phone and TV resume them where you stopped. The window uses its own empty profile, which is deleted afterwards."),
+                                .child("Videos you watch in xdytube then show in your YouTube history, and your phone and TV resume them where you stopped. The window uses its own empty profile, which is deleted afterwards."),
                         ),
                 )
                 .child(
@@ -1087,7 +1136,7 @@ impl AppView {
             }
             return;
         }
-        self.leave_watch_fullscreen(&route, window, cx);
+        self.leave_watch(&route, window, cx);
         let page = build_page(&route, window, cx);
         let old_route = std::mem::replace(&mut self.route, route);
         let old_page = std::mem::replace(&mut self.page, page);
@@ -1097,7 +1146,7 @@ impl AppView {
             self.history.remove(0);
         }
         self.forward.clear();
-        window.set_window_title(&format!("{} - Stream Tube", self.route.title()));
+        window.set_window_title(&format!("{} - xdytube", self.route.title()));
         window.focus(&self.focus, cx);
         cx.notify();
     }
@@ -1144,7 +1193,7 @@ impl AppView {
         // and show the other one
         self.active_tab = index;
         let next = self.tabs[index].clone();
-        self.leave_watch_fullscreen(&next.route, window, cx);
+        self.leave_watch(&next.route, window, cx);
         self.route = next.route;
         self.history = next.history;
         self.forward = next.forward;
@@ -1156,7 +1205,7 @@ impl AppView {
             Some(p) if !stale => p,
             _ => build_page(&self.route.clone(), window, cx),
         };
-        window.set_window_title(&format!("{} - Stream Tube", self.route.title()));
+        window.set_window_title(&format!("{} - xdytube", self.route.title()));
         window.focus(&self.focus, cx);
         cx.notify();
     }
@@ -1314,36 +1363,61 @@ impl AppView {
 
     pub fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some((r, p)) = self.history.pop() {
-            self.leave_watch_fullscreen(&r, window, cx);
+            self.leave_watch(&r, window, cx);
             let cur_r = std::mem::replace(&mut self.route, r);
             let cur_p = std::mem::replace(&mut self.page, p);
             self.forward.push((cur_r, cur_p));
-            // If we return to a watch page for a different video than is playing, rebuild it
-            if let Route::Watch { id, .. } = &self.route {
-                let playing = player(cx).read(cx).video.as_ref().map(|v| v.id.clone());
-                if playing.as_deref() != Some(id.as_str()) {
-                    self.page = build_page(&self.route.clone(), window, cx);
-                }
-            }
-            window.set_window_title(&format!("{} - Stream Tube", self.route.title()));
+            self.restore_watch_page(window, cx);
+            window.set_window_title(&format!("{} - xdytube", self.route.title()));
             cx.notify();
         }
     }
 
     pub fn forward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some((r, p)) = self.forward.pop() {
-            self.leave_watch_fullscreen(&r, window, cx);
+            self.leave_watch(&r, window, cx);
             let cur_r = std::mem::replace(&mut self.route, r);
             let cur_p = std::mem::replace(&mut self.page, p);
             self.history.push((cur_r, cur_p));
-            window.set_window_title(&format!("{} - Stream Tube", self.route.title()));
+            self.restore_watch_page(window, cx);
+            window.set_window_title(&format!("{} - xdytube", self.route.title()));
             cx.notify();
         }
     }
 
-    fn leave_watch_fullscreen(&self, next: &Route, window: &mut Window, cx: &mut App) {
-        if matches!(self.route, Route::Watch { .. }) && !matches!(next, Route::Watch { .. }) && is_fullscreen(window, cx) {
+    fn open_miniplayer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        cx.global_mut::<UiState>().keep_playing_on_navigation = true;
+        if let Some((previous, _)) = self.history.last() {
+            if matches!(previous, Route::Watch { .. }) && is_fullscreen(window, cx) {
+                toggle_fullscreen(window, cx);
+            }
+            self.back(window, cx);
+        } else {
+            self.go(Route::Home, window, cx);
+        }
+        cx.global_mut::<UiState>().keep_playing_on_navigation = false;
+    }
+
+    fn restore_watch_page(&mut self, window: &mut Window, cx: &mut App) {
+        if let Route::Watch { id, .. } = &self.route {
+            if !player(cx).read(cx).video.as_ref().is_some_and(|video| video.id == *id) {
+                self.page = build_page(&self.route, window, cx);
+            }
+        }
+    }
+
+    fn leave_watch(&self, next: &Route, window: &mut Window, cx: &mut App) {
+        if !matches!(self.route, Route::Watch { .. }) || matches!(next, Route::Watch { .. }) {
+            return;
+        }
+        if is_fullscreen(window, cx) {
             toggle_fullscreen(window, cx);
+        }
+        if !store::settings_snapshot().auto_miniplayer
+            && !cx.global::<UiState>().keep_playing_on_navigation
+            && crate::ui::pip::handle(cx).is_none()
+        {
+            player(cx).update(cx, |player, cx| player.stop(cx));
         }
     }
 
@@ -1989,18 +2063,14 @@ impl AppView {
             return;
         }
         match (k, m.shift) {
-            ("f", false) => toggle_fullscreen(window, cx),
+            ("f", false) if !cfg!(target_os = "macos") || matches!(self.route, Route::Watch { .. }) => toggle_fullscreen(window, cx),
             ("t", false) => {
                 cx.global_mut::<UiState>().theater ^= true;
                 cx.notify();
             }
             ("i", false) => {
                 if matches!(self.route, Route::Watch { .. }) {
-                    if self.history.is_empty() {
-                        self.go(Route::Home, window, cx);
-                    } else {
-                        self.back(window, cx);
-                    }
+                    self.open_miniplayer(window, cx);
                 } else if let Some(v) = p.read(cx).video.clone() {
                     self.go(Route::Watch { id: v.id, playlist: None, start: None }, window, cx);
                 }
@@ -2278,12 +2348,16 @@ impl AppView {
             .child(entry("s-hist", "history", "History", Route::History, route == Route::History, cx))
             .child(entry("s-pl", "list-video", "Playlists", Route::Library, route == Route::Library, cx));
         for pl in store::playlists().into_iter().filter(|p| p.protected) {
-            let name = if pl.name == "Watch later" { "clock" } else { "thumbs-up" };
-            let active = route == Route::LocalPlaylist(pl.id);
+            let (name, target) = if pl.name == "Watch later" {
+                ("clock", Route::Playlist("WL".into()))
+            } else {
+                ("thumbs-up", Route::LocalPlaylist(pl.id))
+            };
+            let active = route == target;
             let id = pl.id;
             col = col.child(
                 row(SharedString::from(format!("s-lp-{id}")), ic(name, active), pl.name.clone(), active)
-                    .on_click(cx.listener(move |this, _, window, cx| this.go(Route::LocalPlaylist(id), window, cx))),
+                    .on_click(cx.listener(move |this, _, window, cx| this.go(target.clone(), window, cx))),
             );
         }
         col = col.child(entry("s-dl", "download", "Downloads", Route::Downloads, route == Route::Downloads, cx));
@@ -2572,7 +2646,7 @@ impl AppView {
         }
         let has_installer = cfg!(windows) && rel.asset.is_some();
         let size = rel.asset.as_ref().map(|a| a.size).filter(|s| *s > 0).map(|s| format!("{:.0} MB", s as f64 / 1_048_576.0));
-        let version = rel.name.trim_start_matches("Stream Tube").trim().trim_start_matches('v').to_string();
+        let version = rel.name.trim_start_matches("xdytube").trim().trim_start_matches('v').to_string();
         let accent = crate::ui::app_icon::icon_accent(store::settings_snapshot().accent);
         let [c0, _, c2] = crate::ui::app_icon::accent_stops(accent);
         let mut meta = vec![format!("You have {}", crate::updater::current_version())];
@@ -2630,7 +2704,7 @@ impl AppView {
                     .child(icon("sparkles").size_3p5().text_color(white()))
                     .child("New version"),
             )
-            .child(div().text_3xl().font_weight(FontWeight::BOLD).text_color(white()).child(format!("Stream Tube {version}")))
+            .child(div().text_3xl().font_weight(FontWeight::BOLD).text_color(white()).child(format!("xdytube {version}")))
             .child(div().text_sm().text_color(hsla(0., 0., 1., 0.85)).child(meta.join("  ·  ")));
 
         let mut body = div().flex().flex_col().gap_4().p_6();
@@ -2688,7 +2762,7 @@ impl AppView {
                                 ),
                         ),
                     )
-                    .child(div().text_xs().text_color(p.text2).child("Stream Tube restarts by itself when it's done.")),
+                    .child(div().text_xs().text_color(p.text2).child("xdytube restarts by itself when it's done.")),
             );
             return div().flex().flex_col().child(hero).child(body).into_any_element();
         }

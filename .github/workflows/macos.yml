@@ -28,9 +28,9 @@ jobs:
       - name: Build and package
         run: |
           bundle=$(bash packaging/macos/build-app.sh)
-          test "$(lipo -archs "$bundle/Contents/MacOS/streamtube")" = arm64
+          test "$(lipo -archs "$bundle/Contents/MacOS/xdytube")" = arm64
           version=$(cargo metadata --format-version 1 --no-deps --locked | plutil -extract packages.0.version raw -o - -)
-          ditto -c -k --sequesterRsrc --keepParent "$bundle" "dist/StreamTube-$version-macos-arm64.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$bundle" "dist/xdytube-$version-macos-arm64.zip"
 
       - name: Test
         run: cargo test --release --locked

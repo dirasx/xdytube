@@ -79,8 +79,8 @@ jobs:
           common=(
             -s dir -C "$root" -n streamtube -v "$pkgver" -a x86_64
             --license MIT --url "https://github.com/Avaneesh-Inamdar/Stream-Tube-Desktop"
-            --maintainer "Stream Tube <noreply@github.com>"
-            --description "Stream Tube - a fast native YouTube client with SponsorBlock, DeArrow and Return YouTube Dislike"
+            --maintainer "xdytube <noreply@github.com>"
+            --description "xdytube - a fast native YouTube client with SponsorBlock, DeArrow and Return YouTube Dislike"
             --category video
             --after-install packaging/linux/postinst.sh --after-remove packaging/linux/postinst.sh
           )

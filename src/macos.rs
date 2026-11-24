@@ -60,12 +60,12 @@ pub fn init_menu(main_window: AnyWindowHandle, cx: &mut App) {
         KeyBinding::new("cmd-,", Settings, None),
         KeyBinding::new("cmd-q", Quit, None),
     ]);
-    cx.set_menus([Menu::new("Stream Tube").items([
+    cx.set_menus([Menu::new("xdytube").items([
         MenuItem::action("About", About),
         MenuItem::separator(),
         MenuItem::action("Settings", Settings),
         MenuItem::separator(),
-        MenuItem::action("Quit Stream Tube", Quit),
+        MenuItem::action("Quit xdytube", Quit),
     ])]);
 }
 
@@ -93,8 +93,8 @@ mod tests {
         let menus = cx.read(|cx| cx.get_menus().expect("application menus"));
         let menu = menus
             .iter()
-            .find(|menu| menu.name == "Stream Tube")
-            .expect("Stream Tube menu");
+            .find(|menu| menu.name == "xdytube")
+            .expect("xdytube menu");
         assert!(menu.items.iter().any(|item| matches!(item,
             OwnedMenuItem::Action { name, action, disabled: false, .. }
             if name == "About" && action.as_any().is::<About>()

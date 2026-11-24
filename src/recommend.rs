@@ -1,5 +1,5 @@
 //! Recommendations without an account: videos related to what was watched and
-//! searched in Stream Tube. Everything it starts from is the local history; the
+//! searched in xdytube. Everything it starts from is the local history; the
 //! only requests are YouTube's ordinary "related videos" and search calls.
 use crate::api::innertube;
 use crate::api::types::{Item, VideoItem};

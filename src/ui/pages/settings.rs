@@ -523,7 +523,7 @@ impl SettingsPage {
                     div()
                         .text_sm()
                         .text_color(p.text)
-                        .child("These are built into Stream Tube, so they work without YouTube Premium and without signing in."),
+                        .child("These are built into xdytube, so they work without YouTube Premium and without signing in."),
                 )
         });
         card(cx)
@@ -613,6 +613,12 @@ impl SettingsPage {
             .child(row("Default speed", "", self.choice("speed", &[(0.75f64, "0.75x"), (1.0, "1x"), (1.25, "1.25x"), (1.5, "1.5x"), (1.75, "1.75x"), (2.0, "2x")], s.default_speed, |s, v| s.default_speed = v, cx), cx))
             .child(row("Remember speed per channel", "", switch("rsp", s.remember_speed_per_channel, |s, v| s.remember_speed_per_channel = v, cx), cx))
             .child(row("Autoplay next video", "", switch("autoplay", s.autoplay_next, |s, v| s.autoplay_next = v, cx), cx))
+            .child(row(
+                "Automatic miniplayer",
+                "Keep playing in the miniplayer when you leave a video",
+                switch("auto-miniplayer", s.auto_miniplayer, |s, v| s.auto_miniplayer = v, cx),
+                cx,
+            ))
             .child(row("Resume where you left off", "", switch("resume", s.resume_playback, |s, v| s.resume_playback = v, cx), cx))
             .child(row("Loop videos by default", "", switch("loop", s.loop_video, |s, v| s.loop_video = v, cx), cx))
             .child(row("Audio only mode", "", switch("ao", s.audio_only, |s, v| s.audio_only = v, cx), cx))
@@ -928,7 +934,7 @@ impl SettingsPage {
         card(cx)
             .child(row(
                 "Playback client",
-                "Which YouTube app Stream Tube presents itself as to get video streams. Try another one if videos stop playing or fail to load.",
+                "Which YouTube app xdytube presents itself as to get video streams. Try another one if videos stop playing or fail to load.",
                 self.choice(
                     "sb2",
                     &[
@@ -1002,7 +1008,7 @@ impl SettingsPage {
                 "yt-dlp",
                 &match &self.ytdlp_version {
                     Some(v) => format!("Installed ({v}). Downloads in every quality, with SponsorBlock chapters"),
-                    None => "Needed for downloads above 360p. Stream Tube can fetch it for you".into(),
+                    None => "Needed for downloads above 360p. xdytube can fetch it for you".into(),
                 },
                 if let Some(f) = crate::downloads::ytdlp_fetch() {
                     fetch_progress("ytdlp-prog", f, cx)
@@ -1020,7 +1026,7 @@ impl SettingsPage {
                 match self.ffmpeg_found {
                     Some(true) => "Installed. Joins the video and audio of downloads above 360p",
                     Some(false) if cfg!(target_os = "macos") => crate::downloads::GET_FFMPEG_HELP,
-                    Some(false) => "Needed to join video and audio above 360p. Stream Tube can fetch it for you",
+                    Some(false) => "Needed to join video and audio above 360p. xdytube can fetch it for you",
                     None => "",
                 },
                 if let Some(f) = crate::downloads::ffmpeg_fetch() {
@@ -1050,7 +1056,7 @@ impl SettingsPage {
                 card(cx)
                     .child(row(
                         "Import",
-                        "Takeout, NewPipe, FreeTube, OPML or Stream Tube backup",
+                        "Takeout, NewPipe, FreeTube, OPML or xdytube backup",
                         pill("imp", Some("upload"), "Choose file…", cx).on_click(|_, _, cx| {
                             let rx = cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: true, prompt: Some("Import".into()) });
                             cx.spawn(async move |cx| {
@@ -1084,18 +1090,18 @@ impl SettingsPage {
         let video_engine = if crate::player::mpv::available() {
             "libmpv"
         } else if cfg!(target_os = "macos") {
-            "Install libmpv with brew install mpv, then restart Stream Tube"
+            "Install libmpv with brew install mpv, then restart xdytube"
         } else if cfg!(windows) {
             "libmpv-2.dll not found"
         } else {
             "libmpv not found (install the libmpv package)"
         };
         card(cx)
-            .child(row("Stream Tube", &format!("Version {}", env!("CARGO_PKG_VERSION")), div(), cx))
+            .child(row("xdytube", &format!("Version {}", env!("CARGO_PKG_VERSION")), div(), cx))
             .child(row("Video engine", video_engine, div(), cx))
             .child(row("yt-dlp", self.ytdlp_version.as_deref().unwrap_or("not installed"), div(), cx))
             .when(cfg!(target_os = "macos"), |card| {
-                card.child(row("Updates", "Local macOS build. Rebuild from source to update.", div(), cx))
+                card.child(row("Updates", "Download updates from the private GitHub releases page.", div(), cx))
             })
             .when(!cfg!(target_os = "macos"), |card| {
                 use crate::updater::Status;

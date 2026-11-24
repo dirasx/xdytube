@@ -87,8 +87,9 @@ impl FeedPage {
             let res = blocking(move || {
                 // signed in: the account's own subscriptions feed, one request instead of one per channel
                 if account {
-                    if let Ok(v) = crate::api::auth::subscriptions_videos(4) {
+                    if let Ok(mut v) = crate::api::auth::subscriptions_videos(4) {
                         if !v.is_empty() {
+                            crate::feed::sort_feed(&mut v);
                             return (v, 0);
                         }
                     }
@@ -211,43 +212,18 @@ impl Render for FeedPage {
             let (_, w) = grid_columns(width, 200.0);
             grid(vids.iter().take(self.shown).map(|v| shorts_card(v, w, cx)).collect(), width).into_any_element()
         } else {
-            // group by day buckets like YouTube
-            let now = crate::api::json::now();
-            let bucket = |ts: Option<i64>| -> &'static str {
-                let d = ts.map(|t| now - t).unwrap_or(i64::MAX);
-                if d < 86400 {
-                    "Today"
-                } else if d < 2 * 86400 {
-                    "Yesterday"
-                } else if d < 7 * 86400 {
-                    "This week"
-                } else if d < 30 * 86400 {
-                    "This month"
-                } else {
-                    "Older"
-                }
-            };
-            let mut col = div().flex().flex_col().gap_8();
-            let mut cur: Option<&str> = None;
-            let mut group: Vec<AnyElement> = Vec::new();
-            for v in vids.iter().take(self.shown) {
-                let b = bucket(v.published_ts);
-                if cur != Some(b) {
-                    if let Some(c) = cur {
-                        col = col.child(div().flex().flex_col().gap_4().child(section_title(c, cx)).child(grid(std::mem::take(&mut group), width)));
-                    }
-                    cur = Some(b);
-                }
-                let v2 = (*v).clone();
-                group.push(video_card(&v2, card_w, true, cx));
-            }
-            if let Some(c) = cur {
-                col = col.child(div().flex().flex_col().gap_4().child(section_title(c, cx)).child(grid(group, width)));
-            }
-            if self.shown < total_vids {
-                col = col.child(spinner(cx));
-            }
-            col.into_any_element()
+            let cards = vids
+                .iter()
+                .take(self.shown)
+                .map(|v| video_card(v, card_w, true, cx))
+                .collect();
+            div()
+                .flex()
+                .flex_col()
+                .gap_8()
+                .child(grid(cards, width))
+                .when(self.shown < total_vids, |d| d.child(spinner(cx)))
+                .into_any_element()
         };
         page_scroll("feed-scroll", &self.scroll).child(div().px_6().pt_4().pb_24().child(header).child(body)).into_any_element()
     }

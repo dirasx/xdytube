@@ -83,7 +83,7 @@ fn fetch_decode(url: &str) -> anyhow::Result<Arc<RenderImage>> {
     if let Some(frames) = animated(&bytes) {
         return Ok(Arc::new(RenderImage::new(frames)));
     }
-    let img = image::load_from_memory(&bytes)?;
+    let img = crop_youtube_thumbnail(url, image::load_from_memory(&bytes)?);
     let (w, h) = (img.width(), img.height());
     let mut rgba = if w > MAX_W || h > MAX_H {
         let k = (MAX_W as f32 / w as f32).min(MAX_H as f32 / h as f32);
@@ -96,6 +96,21 @@ fn fetch_decode(url: &str) -> anyhow::Result<Arc<RenderImage>> {
         px.swap(0, 2);
     }
     Ok(Arc::new(RenderImage::new(smallvec::smallvec![image::Frame::new(rgba)])))
+}
+
+/// Legacy YouTube posters may put a 16:9 picture inside a 4:3 image.
+fn crop_youtube_thumbnail(url: &str, img: image::DynamicImage) -> image::DynamicImage {
+    let youtube_poster = ["https://i.ytimg.com/vi/", "https://i.ytimg.com/vi_webp/"]
+        .iter()
+        .any(|prefix| url.starts_with(prefix));
+    let (width, height) = (img.width(), img.height());
+    if youtube_poster && u64::from(width) * 3 == u64::from(height) * 4 {
+        let picture_height = ((u64::from(width) * 9) / 16) as u32;
+        if picture_height > 0 {
+            return img.crop_imm(0, (height - picture_height) / 2, width, picture_height);
+        }
+    }
+    img
 }
 
 /// Animated images are kept this small (they're drawn at most 240px wide), cut
@@ -281,4 +296,33 @@ pub fn on_navigate(cx: &mut App) {
         });
     })
     .detach();
+}
+
+#[cfg(test)]
+mod thumbnail_tests {
+    use super::crop_youtube_thumbnail;
+
+    #[test]
+    fn removes_legacy_youtube_letterbox_without_losing_the_bottom() {
+        let frame = image::RgbaImage::from_fn(480, 360, |_, y| {
+            if (45..315).contains(&y) { image::Rgba([75, 110, 150, 255]) } else { image::Rgba([0, 0, 0, 255]) }
+        });
+        let url = "https://i.ytimg.com/vi/example/hqdefault.jpg";
+        let cropped = crop_youtube_thumbnail(url, image::DynamicImage::ImageRgba8(frame)).into_rgba8();
+        assert_eq!(cropped.dimensions(), (480, 270));
+        assert_eq!(cropped.get_pixel(0, 0), cropped.get_pixel(0, 269));
+        assert_eq!(cropped.get_pixel(0, 0).0, [75, 110, 150, 255]);
+    }
+
+    #[test]
+    fn leaves_widescreen_thumbnails_and_other_images_unchanged() {
+        for (url, height) in [
+            ("https://i.ytimg.com/vi/example/hq720.jpg", 270),
+            ("https://i.ytimg.com/vi/example/oar2.jpg", 640),
+            ("https://example.org/photo.jpg", 360),
+        ] {
+            let result = crop_youtube_thumbnail(url, image::DynamicImage::new_rgba8(480, height));
+            assert_eq!((result.width(), result.height()), (480, height));
+        }
+    }
 }

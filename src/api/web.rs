@@ -199,6 +199,7 @@ fn find_browser() -> Option<(String, PathBuf)> {
         {
             let home = std::env::var("HOME").unwrap_or_default();
             let apps = [
+                ("Yandex Browser", "Yandex.app/Contents/MacOS/Yandex"),
                 ("Google Chrome", "Google Chrome.app/Contents/MacOS/Google Chrome"),
                 ("Microsoft Edge", "Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
                 ("Brave", "Brave Browser.app/Contents/MacOS/Brave Browser"),
@@ -297,7 +298,7 @@ fn youtube_cookies(list: &[Value]) -> BTreeMap<String, String> {
 /// have. Returns the account name. `cancel` stops waiting and closes the browser.
 pub fn browser_sign_in(cancel: Arc<AtomicBool>) -> Result<String> {
     let (_, exe) = find_browser().ok_or_else(|| {
-        anyhow!("No supported browser found. Install Google Chrome, Microsoft Edge, Brave or Chromium, or import a cookies.txt file instead.")
+        anyhow!("No supported browser found. Install Yandex Browser, Google Chrome, Microsoft Edge, Brave, Chromium or Vivaldi, or import a cookies.txt file instead.")
     })?;
     let profile = crate::store::data_dir().join("signin-browser");
     let _ = std::fs::remove_dir_all(&profile);

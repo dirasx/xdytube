@@ -108,6 +108,7 @@ pub struct Settings {
     /// "confirm you're not a bot" wall while IPv4 from the same line doesn't.
     pub ipv4_only: bool,
     pub background_play: bool,
+    pub auto_miniplayer: bool,
     // Tweaks (from YouTube patch sets like Morphe/ReVanced)
     pub ambient_mode: bool,
     pub shorts_in_player: bool,
@@ -191,7 +192,7 @@ impl Default for Settings {
             feed_include_shorts: false,
             feed_include_live: true,
             download_dir: dirs::download_dir()
-                .map(|d| d.join("Stream Tube").to_string_lossy().into_owned())
+                .map(|d| d.join("xdytube").to_string_lossy().into_owned())
                 .unwrap_or_default(),
             download_dir_chosen: false,
             download_format: "1080".into(),
@@ -215,6 +216,7 @@ impl Default for Settings {
             enhanced_bitrate: false,
             ipv4_only: true,
             background_play: true,
+            auto_miniplayer: false,
             ambient_mode: true,
             shorts_in_player: false,
             shorts_autoadvance: false,
@@ -993,6 +995,12 @@ pub fn set_rating(video_id: &str, r: i8) {
 #[cfg(test)]
 mod settings_tests {
     use super::*;
+
+    #[test]
+    fn automatic_miniplayer_is_off_for_existing_profiles_and_can_be_enabled() {
+        assert!(!settings_from_value(serde_json::json!({})).auto_miniplayer);
+        assert!(settings_from_value(serde_json::json!({"auto_miniplayer": true})).auto_miniplayer);
+    }
 
     #[test]
     fn a_bad_field_keeps_the_others() {

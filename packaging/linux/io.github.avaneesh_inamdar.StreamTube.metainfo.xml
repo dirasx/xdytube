@@ -3,11 +3,11 @@
   <id>io.github.avaneesh_inamdar.StreamTube</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
-  <name>Stream Tube</name>
+  <name>xdytube</name>
   <summary>A fast native YouTube client without ads</summary>
   <description>
     <p>
-      Stream Tube is a native desktop YouTube client. It plays videos directly through
+      xdytube is a native desktop YouTube client. It plays videos directly through
       libmpv, so there are no ads, and it skips sponsor reads with SponsorBlock.
     </p>
     <ul>

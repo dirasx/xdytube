@@ -1,6 +1,6 @@
 //! Import/export of subscriptions, history and playlists.
 //! Supports YouTube Takeout (CSV + watch-history.json), NewPipe JSON, FreeTube .db (NDJSON), OPML,
-//! and Stream Tube's own full backup JSON.
+//! and xdytube's own full backup JSON.
 use crate::api::types::VideoItem;
 use crate::store;
 use anyhow::{Result, anyhow};
@@ -118,7 +118,7 @@ fn split_csv(line: &str) -> Vec<String> {
 }
 
 fn import_json_value(v: &Value, rep: &mut ImportReport) -> Result<()> {
-    // Stream Tube backup (also from when the app was called Ferrotube)
+    // xdytube backup (also from when the app was called Ferrotube)
     if v.get("streamtube").is_some() || v.get("ferrotube").is_some() {
         for s in v["subscriptions"].as_array().into_iter().flatten() {
             if let (Some(id), Some(name)) = (s["channel_id"].as_str(), s["name"].as_str()) {

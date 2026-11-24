@@ -103,7 +103,7 @@ jobs:
             gh release upload "$TAG" dist/* --clobber
           else
             gh release create "$TAG" dist/* --draft --verify-tag "${pre[@]}" \
-              --title "Stream Tube $VERSION" --generate-notes
+              --title "xdytube $VERSION" --generate-notes
           fi
 
           {

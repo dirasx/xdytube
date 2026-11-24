@@ -112,7 +112,7 @@ fn main() {
         let opts = WindowOptions {
             window_bounds: Some(saved_window_bounds(cx)),
             titlebar: Some(TitlebarOptions {
-                title: Some("Stream Tube".into()),
+                title: Some("xdytube".into()),
                 appears_transparent: !cfg!(target_os = "macos"),
                 ..Default::default()
             }),

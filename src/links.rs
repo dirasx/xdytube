@@ -5,11 +5,11 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::time::Duration;
 
 /// Turns a `streamtube:` link back into the YouTube URL it wraps.
-/// Accepts `streamtube://open?url=<encoded>`, `streamtube:https://…` and
-/// `streamtube://www.youtube.com/watch?v=…`; anything else is returned unchanged.
+/// Accepts `xdytube://open?url=<encoded>`, `xdytube:https://…` and
+/// `xdytube://www.youtube.com/watch?v=…`; anything else is returned unchanged.
 pub fn normalize(arg: &str) -> String {
     let a = arg.trim().trim_matches('"');
-    let Some(rest) = a.strip_prefix("streamtube:").or_else(|| a.strip_prefix("STREAMTUBE:")) else {
+    let Some(rest) = a.strip_prefix("xdytube:").or_else(|| a.strip_prefix("XDYTUBE:")).or_else(|| a.strip_prefix("streamtube:")).or_else(|| a.strip_prefix("STREAMTUBE:")) else {
         return a.to_string();
     };
     let rest = rest.trim_start_matches('/');
@@ -64,14 +64,14 @@ pub fn forward_to_running(arg: &str) -> bool {
     BufReader::new(stream).read_line(&mut reply).is_ok() && reply.trim() == "ok"
 }
 
-/// Makes `streamtube://` links open this app when nothing handles them yet (the
+/// Makes `xdytube://` links open this app when nothing handles them yet (the
 /// portable zip; the installer registers them itself). Runs in the background.
 pub fn register_scheme() {
     #[cfg(windows)]
     std::thread::spawn(|| {
         use std::process::Command;
         let Ok(exe) = std::env::current_exe() else { return };
-        let key = r"HKCU\Software\Classes\streamtube";
+        let key = r"HKCU\Software\Classes\xdytube";
         let reg = |args: &[&str]| {
             let mut c = Command::new("reg");
             c.args(args);
@@ -83,7 +83,7 @@ pub fn register_scheme() {
         }
         let exe = exe.to_string_lossy();
         let cmd = format!("\"{exe}\" \"%1\"");
-        let _ = reg(&["add", key, "/ve", "/d", "URL:Stream Tube", "/f"])
+        let _ = reg(&["add", key, "/ve", "/d", "URL:xdytube", "/f"])
             && reg(&["add", key, "/v", "URL Protocol", "/d", "", "/f"])
             && reg(&["add", &format!(r"{key}\DefaultIcon"), "/ve", "/d", &format!("{exe},0"), "/f"])
             && reg(&["add", &format!(r"{key}\shell\open\command"), "/ve", "/d", &cmd, "/f"]);
@@ -163,10 +163,10 @@ mod tests {
 
     #[test]
     fn scheme_links() {
-        assert_eq!(normalize("streamtube://open?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dabc"), "https://www.youtube.com/watch?v=abc");
-        assert_eq!(normalize("streamtube:https://youtu.be/abc"), "https://youtu.be/abc");
-        assert_eq!(normalize("streamtube://https:/youtu.be/abc"), "https://youtu.be/abc");
-        assert_eq!(normalize("streamtube://www.youtube.com/watch?v=abc"), "https://www.youtube.com/watch?v=abc");
+        assert_eq!(normalize("xdytube://open?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dabc"), "https://www.youtube.com/watch?v=abc");
+        assert_eq!(normalize("xdytube:https://youtu.be/abc"), "https://youtu.be/abc");
+        assert_eq!(normalize("xdytube://https:/youtu.be/abc"), "https://youtu.be/abc");
+        assert_eq!(normalize("xdytube://www.youtube.com/watch?v=abc"), "https://www.youtube.com/watch?v=abc");
         assert_eq!(normalize("https://youtu.be/abc"), "https://youtu.be/abc");
     }
 }

@@ -19,18 +19,18 @@ minimum_system=$(xcrun vtool -show-build "$binary" | awk '$1 == "minos" { print 
 output_root="${1:-$PWD/dist/macos}"
 mkdir -p "$output_root"
 output_root=$(cd "$output_root" && pwd -P)
-output=$(mktemp -d "$output_root/StreamTube-$version-$(uname -m).XXXXXXXX")
-app="$output/Stream Tube.app"
-iconset="$output/StreamTube.iconset"
+output=$(mktemp -d "$output_root/xdytube-$version-$(uname -m).XXXXXXXX")
+app="$output/xdytube.app"
+iconset="$output/xdytube.iconset"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$iconset"
-install -m 755 "$binary" "$app/Contents/MacOS/streamtube"
+install -m 755 "$binary" "$app/Contents/MacOS/xdytube"
 install -m 644 LICENSE "$app/Contents/Resources/LICENSE"
 for size in 16 32 128 256; do
     sips -z "$size" "$size" assets/logo.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
     double=$((size * 2))
     sips -z "$double" "$double" assets/logo.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
 done
-iconutil -c icns "$iconset" -o "$app/Contents/Resources/StreamTube.icns"
+iconutil -c icns "$iconset" -o "$app/Contents/Resources/xdytube.icns"
 rm -r "$iconset"
 
 cat > "$app/Contents/Info.plist" <<EOF
@@ -39,13 +39,15 @@ cat > "$app/Contents/Info.plist" <<EOF
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>streamtube</string>
+    <string>xdytube</string>
     <key>CFBundleIconFile</key>
-    <string>StreamTube.icns</string>
+    <string>xdytube.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>io.github.avaneesh-inamdar.StreamTube</string>
+    <string>io.github.dirasx.xdytube</string>
+    <key>CFBundleDisplayName</key>
+    <string>xdytube</string>
     <key>CFBundleName</key>
-    <string>Stream Tube</string>
+    <string>xdytube</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -62,9 +64,9 @@ cat > "$app/Contents/Info.plist" <<EOF
             <key>CFBundleTypeRole</key>
             <string>Viewer</string>
             <key>CFBundleURLName</key>
-            <string>io.github.avaneesh-inamdar.StreamTube.link</string>
+            <string>io.github.dirasx.xdytube.link</string>
             <key>CFBundleURLSchemes</key>
-            <array><string>streamtube</string></array>
+            <array><string>xdytube</string></array>
         </dict>
     </array>
 </dict>

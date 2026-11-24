@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Stream Tube: open in app
+// @name         xdytube: open in app
 // @namespace    https://github.com/Avaneesh-Inamdar/Stream-Tube-Desktop
 // @version      1.0.0
-// @description  Adds an "Open in Stream Tube" button to YouTube, so videos, Shorts, channels and playlists open in the Stream Tube desktop app (no ads, SponsorBlock, DeArrow, Return YouTube Dislike) and continue from where you were.
-// @author       Stream Tube
+// @description  Adds an "Open in xdytube" button to YouTube, so videos, Shorts, channels and playlists open in the xdytube desktop app (no ads, SponsorBlock, DeArrow, Return YouTube Dislike) and continue from where you were.
+// @author       xdytube
 // @license      MIT
 // @match        https://www.youtube.com/*
 // @match        https://m.youtube.com/*
@@ -20,7 +20,7 @@
 // @noframes
 // ==/UserScript==
 
-// Stream Tube registers the streamtube:// link scheme when it is installed (or the
+// xdytube registers the xdytube:// link scheme when it is installed (or the
 // first time the portable build runs). The browser asks once whether to open it.
 (function () {
   "use strict";
@@ -29,7 +29,7 @@
   const get = (k, d) => (typeof GM_getValue === "function" ? GM_getValue(k, d) : d);
   const set = (k, v) => typeof GM_setValue === "function" && GM_setValue(k, v);
 
-  /** The YouTube page this tab shows, if Stream Tube can open it. */
+  /** The YouTube page this tab shows, if xdytube can open it. */
   function target() {
     const u = new URL(location.href);
     const p = u.pathname;
@@ -44,7 +44,7 @@
     return document.querySelector("#movie_player video, video.html5-main-video, ytd-reel-video-renderer[is-active] video, video");
   }
 
-  /** The link Stream Tube opens: the page's URL, with the current position for videos. */
+  /** The link xdytube opens: the page's URL, with the current position for videos. */
   function appLink(t) {
     const url = new URL(t.url.href);
     if (t.kind === "video") {
@@ -53,7 +53,7 @@
         url.searchParams.set("t", Math.floor(v.currentTime) + "s");
       }
     }
-    return "streamtube://open?url=" + encodeURIComponent(url.href);
+    return "xdytube://open?url=" + encodeURIComponent(url.href);
   }
 
   function openInApp() {
@@ -69,8 +69,8 @@
     const b = document.createElement("button");
     b.id = BUTTON_ID;
     b.type = "button";
-    b.title = "Open in Stream Tube";
-    b.setAttribute("aria-label", "Open in Stream Tube");
+    b.title = "Open in xdytube";
+    b.setAttribute("aria-label", "Open in xdytube");
     const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     icon.setAttribute("viewBox", "0 0 24 24");
     icon.setAttribute("width", "18");
@@ -80,7 +80,7 @@
     path.setAttribute("fill", "currentColor");
     icon.appendChild(path);
     const label = document.createElement("span");
-    label.textContent = "Open in Stream Tube";
+    label.textContent = "Open in xdytube";
     b.append(icon, label);
     Object.assign(b.style, {
       position: "fixed",
@@ -137,11 +137,11 @@
   }
 
   if (typeof GM_registerMenuCommand === "function") {
-    GM_registerMenuCommand("Open this page in Stream Tube", openInApp);
-    GM_registerMenuCommand("Always open videos in Stream Tube (on/off)", () =>
-      toggle("autoOpen", "Videos now open in Stream Tube by themselves.", "Videos stay in the browser again."));
+    GM_registerMenuCommand("Open this page in xdytube", openInApp);
+    GM_registerMenuCommand("Always open videos in xdytube (on/off)", () =>
+      toggle("autoOpen", "Videos now open in xdytube by themselves.", "Videos stay in the browser again."));
     GM_registerMenuCommand("Show or hide the button", () =>
-      toggle("hideButton", "The button is hidden. Use this menu to open pages in Stream Tube.", "The button is back."));
+      toggle("hideButton", "The button is hidden. Use this menu to open pages in xdytube.", "The button is back."));
   }
 
   // Alt+S opens the current page in the app
