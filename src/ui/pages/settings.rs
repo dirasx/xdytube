@@ -42,6 +42,8 @@ pub struct SettingsPage {
     keyword: Entity<InputState>,
     ytdlp_version: Option<String>,
     update_status: String,
+    available_update: Option<crate::updater::UpdateAsset>,
+    update_busy: bool,
     /// whether FFmpeg was found (None until checked)
     ffmpeg_found: Option<bool>,
     /// downloads::tools_generation() when the tools were last looked for
@@ -125,6 +127,8 @@ impl SettingsPage {
             keyword,
             ytdlp_version: None,
             update_status: "Checking GitHub releases…".into(),
+            available_update: None,
+            update_busy: false,
             ffmpeg_found: None,
             tools_gen: crate::downloads::tools_generation(),
             open_dd: None,
@@ -146,8 +150,37 @@ impl SettingsPage {
         cx.spawn(async move |this, cx| {
             let result = blocking(crate::updater::check_release).await;
             let _ = this.update(cx, |this, cx| {
-                this.update_status = result.unwrap_or_else(|_| "Could not check for updates".into());
+                match result {
+                    Ok(Some(asset)) => {
+                        this.update_status = format!("Update {} available", asset.version);
+                        this.available_update = Some(asset);
+                    }
+                    Ok(None) => { this.update_status = "Up to date".into(); this.available_update = None; }
+                    Err(_) => { this.update_status = "Could not check for updates".into(); this.available_update = None; }
+                }
                 cx.notify();
+            });
+        }).detach();
+    }
+
+    fn install_update(&mut self, cx: &mut Context<Self>) {
+        let Some(asset) = self.available_update.clone() else { return };
+        if self.update_busy { return; }
+        self.update_busy = true;
+        self.update_status = "Downloading and verifying update…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = blocking(move || crate::updater::prepare_install(asset)).await;
+            let _ = this.update(cx, |this, cx| match result {
+                Ok(()) => {
+                    crate::player::controller::player(cx).update(cx, |player, _| player.save_progress(true));
+                    cx.quit();
+                }
+                Err(error) => {
+                    this.update_busy = false;
+                    this.update_status = format!("Update failed: {error:#}");
+                    cx.notify();
+                }
             });
         }).detach();
     }
@@ -1085,6 +1118,8 @@ impl SettingsPage {
             .child(row("Video engine", video_engine, div(), cx))
             .child(row("yt-dlp", self.ytdlp_version.as_deref().unwrap_or("not installed"), div(), cx))
             .child(row("Updates", &self.update_status, pill("upd-check", Some("refresh-cw"), "Check", cx).on_click(cx.listener(|this, _, _, cx| this.check_updates(cx))), cx))
+            .when(self.available_update.is_some() && !self.update_busy, |d| d.child(row("Install update", "The app will restart; your data stays in place", pill("upd-install", Some("download"), "Install and restart", cx).on_click(cx.listener(|this, _, _, cx| this.install_update(cx))), cx)))
+            .when(std::fs::read_to_string(crate::store::data_dir().join("update-result.txt")).is_ok(), |d| d.child(row("Last update", &std::fs::read_to_string(crate::store::data_dir().join("update-result.txt")).unwrap_or_default(), div(), cx)))
             .child(row("Releases", "Changelog and downloads on GitHub", pill("upd-page", Some("external-link"), "Open", cx).on_click(|_, _, _| {
                 let _ = open::that(crate::updater::RELEASES_PAGE);
             }), cx))

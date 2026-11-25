@@ -59,6 +59,18 @@ pub fn save_window_bounds(window: &Window) {
 }
 
 fn main() {
+    let mut args = std::env::args_os();
+    let _ = args.next();
+    if args.next().as_deref() == Some(std::ffi::OsStr::new("--apply-update")) {
+        let result = (|| -> anyhow::Result<()> {
+            let pid = args.next().and_then(|v| v.to_str()?.parse::<u32>().ok()).ok_or_else(|| anyhow::anyhow!("Invalid update process"))?;
+            let app = args.next().ok_or_else(|| anyhow::anyhow!("Missing application path"))?;
+            let stage = args.next().ok_or_else(|| anyhow::anyhow!("Missing staging path"))?;
+            updater::apply_update(pid, std::path::Path::new(&app), std::path::Path::new(&stage))
+        })();
+        if let Err(error) = result { eprintln!("Could not apply update: {error:#}"); }
+        return;
+    }
     perf::mark("main");
     // the local stream proxy must never be reached through the user's proxy
     // SAFETY: set before any other thread starts
@@ -133,6 +145,12 @@ fn main() {
         macos::init_menu(main_window, cx);
         macos::media_keys::init(cx);
         perf::mark("window open");
+        cx.spawn(async move |cx| {
+            let update = ui::blocking(updater::check_release).await;
+            if let Ok(Some(update)) = update {
+                let _ = cx.update(|cx| ui::toast(cx, format!("Update {} is available in Settings → About", update.version)));
+            }
+        }).detach();
         cx.spawn(async move |cx| {
             use futures::StreamExt;
             while let Some(arg) = incoming_rx.next().await {
