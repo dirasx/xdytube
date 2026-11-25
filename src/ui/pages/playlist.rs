@@ -26,6 +26,7 @@ pub struct PlaylistPage {
     info: Option<PlaylistItem>,
     /// loaded through the signed-in account (continuations go there too)
     authed: bool,
+    watch_later_session: Option<String>,
     filter: Option<Entity<gpui_kit::component::input::InputState>>,
     /// 0 playlist order, 1 title, 2 longest, 3 shortest, 4 channel
     sort: u8,
@@ -37,22 +38,26 @@ impl PlaylistPage {
         s.make_filter(window, cx);
         cx.spawn(async move |this, cx| {
             let res = blocking(move || {
+                if id == "WL" {
+                    return crate::api::web::watch_later_playlist().map(|(page, session)| (page, false, Some(session)));
+                }
                 let own = matches!(id.as_str(), "WL" | "LL") || id.starts_with("LL");
                 let signed = crate::api::auth::signed_in();
                 if own && signed {
-                    return crate::api::auth::playlist(&id).map(|p| (p, true));
+                    return crate::api::auth::playlist(&id).map(|p| (p, true, None));
                 }
                 match innertube::playlist(&id) {
-                    Ok(p) if !p.videos.is_empty() || !signed => Ok((p, false)),
+                    Ok(p) if !p.videos.is_empty() || !signed => Ok((p, false, None)),
                     // private / unlisted: only the owner's account can see it
-                    other => crate::api::auth::playlist(&id).map(|p| (p, true)).or_else(|e| other.map(|p| (p, false)).map_err(|_| e)),
+                    other => crate::api::auth::playlist(&id).map(|p| (p, true, None)).or_else(|e| other.map(|p| (p, false, None)).map_err(|_| e)),
                 }
             })
             .await;
             let _ = this.update(cx, |this, cx| {
                 match res {
-                    Ok((p, authed)) => {
+                    Ok((p, authed, watch_later_session)) => {
                         this.authed = authed;
+                        this.watch_later_session = watch_later_session;
                         this.title = p.info.title.clone();
                         this.owner = p.info.channel_name.clone().map(|n| (n, p.info.channel_id.clone()));
                         this.count_text = p.info.video_count_text.clone();
@@ -120,6 +125,7 @@ impl PlaylistPage {
             protected: false,
             info: None,
             authed: false,
+            watch_later_session: None,
             filter: None,
             sort: 0,
         }
@@ -143,8 +149,9 @@ impl PlaylistPage {
             return;
         };
         let authed = self.authed;
+        let watch_later_session = self.watch_later_session.clone();
         cx.spawn(async move |this, cx| {
-            let res = blocking(move || if authed { crate::api::auth::browse_continue(&tok) } else { innertube::browse_continue(&tok) }).await;
+            let res = blocking(move || if let Some(session) = watch_later_session { crate::api::web::watch_later_continue(&tok, &session) } else if authed { crate::api::auth::browse_continue(&tok) } else { innertube::browse_continue(&tok) }).await;
             let _ = this.update(cx, |this, cx| {
                 this.loading_more = false;
                 match res {
@@ -394,10 +401,14 @@ impl Render for PlaylistPage {
                                         toast(cx, "Connect YouTube watch history in Settings to update Watch later.");
                                         return;
                                     }
+                                    let Some(session) = this.watch_later_session.clone() else {
+                                        toast(cx, "Reopen Watch later to refresh the connected account.");
+                                        return;
+                                    };
                                     let id = remove_id.clone();
                                     cx.spawn(async move |this, cx| {
                                         let request_id = id.clone();
-                                        let result = blocking(move || crate::api::web::set_watch_later(&request_id, false)).await;
+                                        let result = blocking(move || crate::api::web::remove_watch_later_in_session(&request_id, &session)).await;
                                         let _ = this.update(cx, |this, cx| {
                                             match result {
                                                 Ok(()) => {

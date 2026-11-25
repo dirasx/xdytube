@@ -410,12 +410,16 @@ pub fn import_web_cookies(cx: &mut App) {
 }
 
 pub fn disconnect_web(cx: &mut App) {
-    if let Err(error) = crate::api::web::disconnect() {
-        toast(cx, error.to_string());
-        return;
-    }
-    toast(cx, "Browser sign-in disconnected");
-    cx.refresh_windows();
+    cx.spawn(async move |cx| {
+        let result = blocking(crate::api::web::disconnect).await;
+        let _ = cx.update(|cx| {
+            match result {
+                Ok(()) => toast(cx, "Browser sign-in disconnected"),
+                Err(error) => toast(cx, error.to_string()),
+            }
+            cx.refresh_windows();
+        });
+    }).detach();
 }
 
 pub fn open_sign_in(_window: &mut Window, cx: &mut App) {

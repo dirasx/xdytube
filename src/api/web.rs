@@ -23,6 +23,7 @@ use std::sync::{Arc, OnceLock, mpsc};
 use std::time::{Duration, Instant};
 
 const WEB_VERSION: &str = "2.20251120.01.00";
+static WATCH_LATER_LOCK: Mutex<()> = Mutex::new(());
 const ORIGIN: &str = "https://www.youtube.com";
 const SIGN_IN_URL: &str = "https://accounts.google.com/ServiceLogin?service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26next%3Dhttps%253A%252F%252Fwww.youtube.com%252F";
 pub const SIGN_IN_NETWORK_HINT: &str = "If Google sign-in is stuck or the connection closed, check your network. If you use a VPN, try another server and start Connect again.";
@@ -71,6 +72,7 @@ pub fn account_name() -> Option<String> {
 }
 
 pub fn disconnect() -> Result<()> {
+    let _edit = WATCH_LATER_LOCK.lock();
     let mut s = session().lock();
     save(None)?;
     *s = None;
@@ -79,6 +81,7 @@ pub fn disconnect() -> Result<()> {
 
 /// Stores a set of youtube.com cookies and checks they belong to a signed-in account.
 fn connect(cookies: BTreeMap<String, String>) -> Result<String> {
+    let _edit = WATCH_LATER_LOCK.lock();
     if !has_login(&cookies) {
         return Err(anyhow!("These cookies aren't from a signed-in YouTube session."));
     }
@@ -201,10 +204,62 @@ fn watch_later_entry(video_id: &str) -> Result<Option<String>> {
     }
 }
 
+fn session_key() -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let session = session().lock();
+    let cookies = &session.as_ref()?.cookies;
+    let bytes = serde_json::to_vec(cookies).ok()?;
+    Some(Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+fn session_matches(current: Option<&str>, expected: &str) -> bool {
+    current.is_some_and(|current| current == expected)
+}
+
+fn parse_watch_later_page(response: &Value) -> Result<crate::api::types::PlaylistPage> {
+    use crate::api::types::{Item, PlaylistItem, PlaylistPage};
+    if response.get("error").is_some() || crate::api::json::find(response, "playlistVideoListRenderer").is_none() {
+        return Err(anyhow!("YouTube did not return Watch later for the connected history account."));
+    }
+    let page = crate::api::innertube::collect_items(response);
+    let videos: Vec<_> = page.items.into_iter().filter_map(|item| match item { Item::Video(video) => Some(video), _ => None }).collect();
+    let info = PlaylistItem { id: "WL".into(), title: "Watch later".into(), channel_name: account_name(), thumbnail: videos.first().map(|v| v.thumbnail.clone()), ..Default::default() };
+    Ok(PlaylistPage { info, videos, continuation: page.continuation, description: None })
+}
+
+pub fn watch_later_playlist() -> Result<(crate::api::types::PlaylistPage, String)> {
+    let _edit = WATCH_LATER_LOCK.lock();
+    let key = session_key().ok_or_else(|| anyhow!("Connect YouTube watch history in Settings to view Watch later."))?;
+    let page = web_call("browse", json!({"browseId": "VLWL"}))?;
+    Ok((parse_watch_later_page(&page)?, key))
+}
+
+pub fn watch_later_continue(token: &str, expected: &str) -> Result<crate::api::types::Page> {
+    let _edit = WATCH_LATER_LOCK.lock();
+    if !session_matches(session_key().as_deref(), expected) { return Err(anyhow!("YouTube history account changed; reopen Watch later.")); }
+    let response = web_call("browse", json!({"continuation": token}))?;
+    if response.get("error").is_some() { return Err(anyhow!("YouTube could not load the next Watch later page.")); }
+    Ok(watch_later_continuation_page(&response))
+}
+
+fn watch_later_continuation_page(response: &Value) -> crate::api::types::Page {
+    crate::api::innertube::collect_items(response)
+}
+
 /// Adds or removes one item from the YouTube Watch later playlist.
 pub fn set_watch_later(video_id: &str, add: bool) -> Result<()> {
-    static EDIT: Mutex<()> = Mutex::new(());
-    let _edit = EDIT.lock();
+    set_watch_later_checked(video_id, add, None)
+}
+
+pub fn remove_watch_later_in_session(video_id: &str, expected: &str) -> Result<()> {
+    set_watch_later_checked(video_id, false, Some(expected))
+}
+
+fn set_watch_later_checked(video_id: &str, add: bool, expected: Option<&str>) -> Result<()> {
+    let _edit = WATCH_LATER_LOCK.lock();
+    if let Some(expected) = expected {
+        if !session_matches(session_key().as_deref(), expected) { return Err(anyhow!("YouTube history account changed; reopen Watch later.")); }
+    }
     if video_id.is_empty() {
         return Err(anyhow!("The video has no ID."));
     }
@@ -762,7 +817,7 @@ mod browser_profile_tests {
 
 #[cfg(test)]
 mod watch_later_tests {
-    use super::{playlist_entry_id, watch_later_add_request};
+    use super::{playlist_entry_id, watch_later_add_request, parse_watch_later_page, session_matches, watch_later_continuation_page};
     use serde_json::json;
 
     #[test]
@@ -771,6 +826,33 @@ mod watch_later_tests {
             "playlistId": "WL",
             "actions": [{ "action": "ACTION_ADD_VIDEO", "addedVideoId": "video-123" }]
         }));
+    }
+
+    #[test]
+    fn playlist_uses_browser_response_and_continuation() {
+        let response = json!({"contents":{"playlistVideoListRenderer":{"contents":[
+            {"playlistVideoRenderer":{"videoId":"one", "title":{"simpleText":"One"}}},
+            {"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"next-page"}}}}
+        ]}}});
+        let page = parse_watch_later_page(&response).unwrap();
+        assert_eq!(page.videos[0].id, "one");
+        assert_eq!(page.continuation.as_deref(), Some("next-page"));
+        assert!(parse_watch_later_page(&json!({"error":{"message":"not signed in"}})).is_err());
+    }
+
+    #[test]
+    fn stale_playlist_session_cannot_be_used_for_removal() {
+        assert!(session_matches(Some("same"), "same"));
+        assert!(!session_matches(Some("other"), "same"));
+        assert!(!session_matches(None, "same"));
+        assert!(super::remove_watch_later_in_session("fixture-video", "stale-session").is_err());
+        assert!(super::watch_later_continue("fixture-token", "stale-session").is_err());
+    }
+
+    #[test]
+    fn continuation_keeps_videos_without_channel_names() {
+        let page = watch_later_continuation_page(&json!({"items":[{"playlistVideoRenderer":{"videoId":"two", "title":{"simpleText":"Two"}}}]}));
+        assert!(matches!(&page.items[..], [crate::api::types::Item::Video(video)] if video.id == "two"));
     }
 
     #[test]
