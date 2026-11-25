@@ -14,7 +14,7 @@ fn numeric_version(value: &str) -> Option<[u64; 3]> {
 }
 
 fn release_is_newer(tag: &str, current: &str) -> Option<bool> {
-    let tag = tag.strip_prefix('R')?;
+    let tag = tag.strip_prefix('v').or_else(|| tag.strip_prefix('R'))?;
     Some(numeric_version(tag)? > numeric_version(current)?)
 }
 
@@ -30,7 +30,8 @@ fn select_update_asset(release: &serde_json::Value, current: &str) -> Result<Opt
     ensure!(release["draft"] == false && release["prerelease"] == false, "Release is not stable");
     let tag = release["tag_name"].as_str().context("Missing release tag")?;
     if !release_is_newer(tag, current).context("Invalid release version")? { return Ok(None); }
-    let parts = numeric_version(tag.strip_prefix('R').context("Invalid release tag")?).context("Invalid release version")?;
+    let tag_version = tag.strip_prefix('v').or_else(|| tag.strip_prefix('R')).context("Invalid release tag")?;
+    let parts = numeric_version(tag_version).context("Invalid release version")?;
     let version = format!("{}.{}.{}", parts[0], parts[1], parts[2]);
     let name = format!("xdytube-{version}-macos-arm64.zip");
     let expected_url = format!("{RELEASES_PAGE}/download/{tag}/{name}");
@@ -156,6 +157,25 @@ mod tests {
         assert_eq!(release_is_newer("R0.1.1", "0.1.0"), Some(true));
         assert_eq!(release_is_newer("v0.0.1-alpha", "0.1.0"), None);
         assert_eq!(release_is_newer("not-a-release", "0.1.0"), None);
+        assert_eq!(release_is_newer("v1.2", "1.2.0"), Some(false));
+        assert_eq!(release_is_newer("v1.2.1", "1.2.0"), Some(true));
+        assert_eq!(release_is_newer("v1.3", "1.2.9"), Some(true));
+        assert_eq!(release_is_newer("v1.2.1-alpha", "1.2.0"), None);
+        assert_eq!(release_is_newer("1.3", "1.2.0"), None);
+    }
+
+    #[test]
+    fn selects_a_patch_release_with_normalized_asset_version() {
+        let release = serde_json::json!({"tag_name":"v1.2.1", "draft":false, "prerelease":false,
+            "assets":[{"name":"xdytube-1.2.1-macos-arm64.zip", "state":"uploaded",
+                "digest":format!("sha256:{}", "a".repeat(64)),
+                "browser_download_url":"https://github.com/dirasx/xdytube/releases/download/v1.2.1/xdytube-1.2.1-macos-arm64.zip"}]});
+        assert_eq!(select_update_asset(&release, "1.2.0").unwrap().unwrap().version, "1.2.1");
+        let base = serde_json::json!({"tag_name":"v1.2", "draft":false, "prerelease":false,
+            "assets":[{"name":"xdytube-1.2.0-macos-arm64.zip", "state":"uploaded",
+                "digest":format!("sha256:{}", "b".repeat(64)),
+                "browser_download_url":"https://github.com/dirasx/xdytube/releases/download/v1.2/xdytube-1.2.0-macos-arm64.zip"}]});
+        assert_eq!(select_update_asset(&base, "0.2.0").unwrap().unwrap().version, "1.2.0");
     }
 
     #[test]
