@@ -1,5 +1,11 @@
 # xdytube changelog
 
+## v1.2 · November 25, 2026 (Moscow time)
+
+- Establishes the new release numbering; the macOS package version is `1.2.0` for Apple Silicon.
+- The update checker recognizes the new `v` tags and retains support for earlier `R` tags. This release otherwise carries forward the features of R0.2.
+- [Download](https://github.com/dirasx/xdytube/releases/tag/v1.2) · [Release notes](release-notes/v1.2.md) · [Source snapshot](published-source/v1.2/README.md)
+
 ## R0.2 · November 25, 2026 (Moscow time)
 
 - Package version `0.2.0` for Apple Silicon; working versions `v0.1.7`–`v0.1.12`.
