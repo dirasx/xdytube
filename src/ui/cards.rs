@@ -158,10 +158,7 @@ pub fn video_menu_items(v: &VideoItem) -> Vec<MenuItem> {
     }));
     let v2 = v.clone();
     items.push(MenuItem::new("clock", "Save to Watch later", move |_, cx| {
-        if let Some(wl) = store::playlists().into_iter().find(|p| p.protected && p.name == "Watch later") {
-            store::playlist_add(wl.id, &v2);
-            toast(cx, "Saved to Watch later");
-        }
+        save_to_watch_later(v2.id.clone(), cx);
     }));
     let v3 = v.clone();
     items.push(MenuItem::new("bookmark", "Save to playlist…", move |window, cx| {
@@ -197,6 +194,22 @@ pub fn video_menu_items(v: &VideoItem) -> Vec<MenuItem> {
         }));
     }
     items
+}
+
+pub fn save_to_watch_later(id: String, cx: &mut App) {
+    if !crate::api::web::connected() {
+        toast(cx, "Connect YouTube watch history in Settings to save to Watch later.");
+        return;
+    }
+    cx.spawn(async move |cx| {
+        let result = blocking(move || crate::api::web::set_watch_later(&id, true)).await;
+        let _ = cx.update(|cx| {
+            match result {
+                Ok(()) => toast(cx, "Saved to YouTube Watch later"),
+                Err(error) => toast(cx, format!("Could not update Watch later: {}", crate::ui::friendly_error(&error.to_string()))),
+            }
+        });
+    }).detach();
 }
 
 #[cfg(test)]

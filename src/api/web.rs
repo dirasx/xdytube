@@ -162,6 +162,72 @@ pub fn web_call(endpoint: &str, mut body: Value) -> Result<Value> {
     Ok(v)
 }
 
+fn watch_later_add_request(video_id: &str) -> Value {
+    json!({
+        "playlistId": "WL",
+        "actions": [{ "action": "ACTION_ADD_VIDEO", "addedVideoId": video_id }]
+    })
+}
+
+fn playlist_entry_id(page: &Value, video_id: &str) -> Option<String> {
+    let mut videos = Vec::new();
+    crate::api::json::find_all(page, "playlistVideoRenderer", &mut videos);
+    videos.into_iter().find_map(|video| {
+        (video.get("videoId").and_then(Value::as_str) == Some(video_id))
+            .then(|| video.get("setVideoId").and_then(Value::as_str).map(str::to_string))
+            .flatten()
+    })
+}
+
+fn watch_later_entry(video_id: &str) -> Result<Option<String>> {
+    let mut page = web_call("browse", json!({ "browseId": "VLWL" }))?;
+    if page.get("error").is_some() || crate::api::json::find(&page, "playlistVideoListRenderer").is_none() {
+        return Err(anyhow!("YouTube did not return the Watch later playlist."));
+    }
+    let mut seen = std::collections::HashSet::new();
+    loop {
+        if let Some(id) = playlist_entry_id(&page, video_id) {
+            return Ok(Some(id));
+        }
+        let mut continuations = Vec::new();
+        crate::api::json::find_all(&page, "continuationItemRenderer", &mut continuations);
+        let Some(token) = continuations.into_iter().find_map(crate::api::innertube::continuation_token) else {
+            return Ok(None);
+        };
+        if !seen.insert(token.clone()) {
+            return Err(anyhow!("YouTube returned a repeated playlist page."));
+        }
+        page = web_call("browse", json!({ "continuation": token }))?;
+    }
+}
+
+/// Adds or removes one item from the YouTube Watch later playlist.
+pub fn set_watch_later(video_id: &str, add: bool) -> Result<()> {
+    static EDIT: Mutex<()> = Mutex::new(());
+    let _edit = EDIT.lock();
+    if video_id.is_empty() {
+        return Err(anyhow!("The video has no ID."));
+    }
+    let existing = watch_later_entry(video_id)?;
+    let request = match (add, existing) {
+        (true, None) => watch_later_add_request(video_id),
+        (false, Some(entry_id)) => json!({
+            "playlistId": "WL",
+            "actions": [{ "action": "ACTION_REMOVE_VIDEO", "setVideoId": entry_id }]
+        }),
+        _ => return Ok(()),
+    };
+    let result = web_call("browse/edit_playlist", request)?;
+    if result.get("error").is_some() {
+        return Err(anyhow!("YouTube could not update Watch later."));
+    }
+    let present = watch_later_entry(video_id)?.is_some();
+    if present != add {
+        return Err(anyhow!("YouTube did not confirm the Watch later change."));
+    }
+    Ok(())
+}
+
 fn fetch_account_name() -> Result<String> {
     let r = web_call("account/account_menu", json!({}))?;
     let header = crate::api::json::find(&r, "activeAccountHeaderRenderer").ok_or_else(|| anyhow!("not signed in"))?;
@@ -691,5 +757,29 @@ mod browser_profile_tests {
         assert!(!data.path().join("signin-browser").exists());
         assert!(unrelated.exists());
         assert!(ordinary.exists());
+    }
+}
+
+#[cfg(test)]
+mod watch_later_tests {
+    use super::{playlist_entry_id, watch_later_add_request};
+    use serde_json::json;
+
+    #[test]
+    fn addition_uses_the_youtube_watch_later_playlist() {
+        assert_eq!(watch_later_add_request("video-123"), json!({
+            "playlistId": "WL",
+            "actions": [{ "action": "ACTION_ADD_VIDEO", "addedVideoId": "video-123" }]
+        }));
+    }
+
+    #[test]
+    fn removal_uses_the_matching_playlist_entry_id() {
+        let page = json!({"contents": [
+            {"playlistVideoRenderer": {"videoId": "other", "setVideoId": "entry-other"}},
+            {"playlistVideoRenderer": {"videoId": "video-123", "setVideoId": "entry-123"}}
+        ]});
+        assert_eq!(playlist_entry_id(&page, "video-123"), Some("entry-123".into()));
+        assert_eq!(playlist_entry_id(&page, "missing"), None);
     }
 }

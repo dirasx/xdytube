@@ -202,6 +202,7 @@ impl Render for PlaylistPage {
         let videos = self.videos.ready().cloned().unwrap_or_default();
         let thumb = videos.first().map(|v| v.thumbnail.clone());
         let local_id = if let Source::Local(id) = self.source { Some(id) } else { None };
+        let watch_later = matches!(&self.source, Source::Remote(id) if id == "WL");
         let remote_info = self.info.clone();
         let saved = remote_info.as_ref().map(|i| store::is_playlist_saved(&i.id)).unwrap_or(false);
         let owner = self.owner.clone();
@@ -335,6 +336,7 @@ impl Render for PlaylistPage {
                 let vs = &shown;
                 for (i, v) in vs.iter().map(|(i, v)| (*i, v)) {
                     let vid = v.id.clone();
+                    let remove_id = v.id.clone();
                     let row = div()
                         .flex()
                         .items_center()
@@ -384,6 +386,32 @@ impl Render for PlaylistPage {
                                 this.reload_local();
                                 cx.notify();
                             })))
+                        })
+                        .when(watch_later, |d| {
+                            d.child(icon_button(SharedString::from(format!("wl-rm-{i}")), "trash-2", cx)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    if !crate::api::web::connected() {
+                                        toast(cx, "Connect YouTube watch history in Settings to update Watch later.");
+                                        return;
+                                    }
+                                    let id = remove_id.clone();
+                                    cx.spawn(async move |this, cx| {
+                                        let request_id = id.clone();
+                                        let result = blocking(move || crate::api::web::set_watch_later(&request_id, false)).await;
+                                        let _ = this.update(cx, |this, cx| {
+                                            match result {
+                                                Ok(()) => {
+                                                    if let Some(videos) = this.videos.ready_mut() {
+                                                        videos.retain(|video| video.id != id);
+                                                    }
+                                                    toast(cx, "Removed from YouTube Watch later");
+                                                }
+                                                Err(error) => toast(cx, format!("Could not update Watch later: {}", crate::ui::friendly_error(&error.to_string()))),
+                                            }
+                                            cx.notify();
+                                        });
+                                    }).detach();
+                                })))
                         });
                     col = col.child(row);
                 }

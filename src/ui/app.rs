@@ -2675,7 +2675,7 @@ impl AppView {
                     .flex_col()
                     .gap_1()
                     .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(p.text).pb_2().child("Save video to…"))
-                    .children(pls.into_iter().map(|pl| {
+                    .children(pls.into_iter().filter(|pl| !(pl.protected && pl.name == "Watch later")).map(|pl| {
                         let contains = store::playlist_contains(pl.id, &v.id);
                         let v2 = v.clone();
                         div()

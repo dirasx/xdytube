@@ -328,6 +328,7 @@ impl Render for LibraryPage {
         let pls = store::playlists();
         let mut cards: Vec<AnyElement> = pls
             .iter()
+            .filter(|pl| !(pl.protected && pl.name == "Watch later"))
             .map(|pl| {
                 let id = pl.id;
                 div()

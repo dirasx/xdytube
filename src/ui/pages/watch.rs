@@ -653,6 +653,7 @@ impl WatchPage {
         };
         let v_dl = video_item.clone();
         let v_save = video_item.clone();
+        let v_later = video_item.id.clone();
         let v_more = video_item.clone();
         let share_id = w.id.clone();
         let channel = w.channel.clone();
@@ -776,6 +777,9 @@ impl WatchPage {
                             }))
                             .child(pill("w-save", Some("bookmark"), "Save", cx).on_click(move |_, window, cx| {
                                 crate::ui::app::open_save_dialog(v_save.clone(), window, cx)
+                            }))
+                            .child(pill("w-later", Some("clock"), "Watch later", cx).on_click(move |_, _, cx| {
+                                save_to_watch_later(v_later.clone(), cx);
                             }))
                             .child(
                                 pill("w-more", Some("ellipsis"), "", cx).w_9().px_0().justify_center().on_click(move |ev, window, cx| {
