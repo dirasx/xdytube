@@ -1291,13 +1291,13 @@ impl WatchPage {
                     .flex()
                     .items_center()
                     .gap_1()
-                    .child(div().w_5().text_xs().text_color(p.text2).text_center().child(if pos == Some(i) { "▶".to_string() } else { (i + 1).to_string() }))
-                    .child(compact_row(
+                    .child(div().w_5().flex_none().text_xs().text_color(p.text2).text_center().child(if pos == Some(i) { "▶".to_string() } else { (i + 1).to_string() }))
+                    .child(div().flex_1().min_w_0().child(compact_row(
                         v,
                         pos == Some(i),
                         Some(Arc::new(move |_, cx: &mut App| plc.update(cx, |p, cx| p.play_queue_index(i, cx)))),
                         cx,
-                    )),
+                    ))),
             );
         }
         let plc2 = pl.clone();

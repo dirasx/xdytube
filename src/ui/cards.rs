@@ -196,19 +196,23 @@ pub fn video_menu_items(v: &VideoItem) -> Vec<MenuItem> {
             cx.refresh_windows();
         }));
     }
-    if is_watched_in_history(&v.id) {
-        let id3 = v.id.clone();
-        items.push(MenuItem::new("eye-off", "Remove from history", move |_, cx| {
-            store::history_remove(&id3);
-            cx.default_global::<Watched>().0.remove(&id3);
-            cx.refresh_windows();
-        }));
-    }
     items
 }
 
-fn is_watched_in_history(id: &str) -> bool {
-    store::progress_map().contains_key(id)
+#[cfg(test)]
+#[::core::prelude::v1::test]
+fn video_menu_does_not_offer_removing_a_watched_video_from_history() {
+    let video = VideoItem {
+        id: "menu-history-regression".into(),
+        title: "Test video".into(),
+        ..Default::default()
+    };
+    store::history_add(&video);
+    assert!(store::progress_map().contains_key(&video.id));
+    let menu = video_menu_items(&video);
+    assert!(!menu.iter().any(|item| item.label.as_ref() == "Remove from history"));
+    assert!(menu.iter().any(|item| item.label.as_ref() == "Add to queue"));
+    store::history_remove(&video.id);
 }
 
 fn more_button(id: SharedString, v: &VideoItem, cx: &App) -> Stateful<Div> {
