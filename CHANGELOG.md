@@ -32,4 +32,4 @@
 - Первый пакет xdytube для Apple Silicon на базе Stream Tube Desktop `0.7.2-alpha`.
 - Хронологическая сетка подписок, Watch Later из аккаунта YouTube, отдельный полноэкранный режим видео, настройка автоматического мини-плеера и обработка превью 4:3.
 - Подключение отправки истории YouTube через отдельный временный профиль Яндекс Браузера.
-- [Архив и контрольная сумма](https://github.com/dirasx/xdytube/releases/tag/xdytube-0.7.2-alpha.xdy.1) · [Подробности и проверки](docs/HANDOFF.md)
+- [Архив и контрольная сумма](https://github.com/dirasx/xdytube/releases/tag/xdytube-0.7.2-alpha.xdy.1)

@@ -13,7 +13,7 @@ cargo build --release --locked
 cargo test --release --locked
 ```
 
-See the [project workflow](WORKFLOW.md) for working task numbers and release candidates.
+See the [working changes](versions/) and the [macOS release candidate workflow](.github/workflows/release.yml).
 
 ## Making a change
 

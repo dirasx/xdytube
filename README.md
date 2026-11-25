@@ -18,4 +18,4 @@ Build on Apple Silicon with `bash packaging/macos/build-app.sh`. Upstream source
 
 ## Для разработчиков
 
-[Статус проекта](PROJECT_STATUS.md) · [Как ведём проект](WORKFLOW.md) · [Ближайший выпуск](plans/next-release.md) · [ДЯ](plans/backlog.md) · [История изменений](CHANGELOG.md) · [Справка по форку](docs/HANDOFF.md)
+[Сборка и участие](CONTRIBUTING.md) · [История изменений](CHANGELOG.md)
