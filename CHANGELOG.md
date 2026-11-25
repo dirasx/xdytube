@@ -1,5 +1,10 @@
 # xdytube changelog
 
+## v1.2.1 · November 25, 2026 (Moscow time)
+
+- Improve fullscreen player controls on mouse movement and add removal from editable YouTube playlists.
+- [Download](https://github.com/dirasx/xdytube/releases/tag/v1.2.1) · [Release notes](release-notes/v1.2.1.md) · [Source snapshot](published-source/v1.2.1/README.md)
+
 ## v1.2 · November 25, 2026 (Moscow time)
 
 - Establishes the new release numbering; the macOS package version is `1.2.0` for Apple Silicon.
