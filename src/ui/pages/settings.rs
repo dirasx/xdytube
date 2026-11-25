@@ -41,6 +41,7 @@ pub struct SettingsPage {
     inputs: Vec<(&'static str, Entity<InputState>)>,
     keyword: Entity<InputState>,
     ytdlp_version: Option<String>,
+    update_status: String,
     /// whether FFmpeg was found (None until checked)
     ffmpeg_found: Option<bool>,
     /// downloads::tools_generation() when the tools were last looked for
@@ -123,6 +124,7 @@ impl SettingsPage {
             inputs,
             keyword,
             ytdlp_version: None,
+            update_status: "Checking GitHub releases…".into(),
             ffmpeg_found: None,
             tools_gen: crate::downloads::tools_generation(),
             open_dd: None,
@@ -134,7 +136,20 @@ impl SettingsPage {
         };
         page.load_sb_stats(cx);
         page.check_tools(cx);
+        page.check_updates(cx);
         page
+    }
+
+    fn check_updates(&mut self, cx: &mut Context<Self>) {
+        self.update_status = "Checking GitHub releases…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = blocking(crate::updater::check_release).await;
+            let _ = this.update(cx, |this, cx| {
+                this.update_status = result.unwrap_or_else(|_| "Could not check for updates".into());
+                cx.notify();
+            });
+        }).detach();
     }
 
     /// Looks for yt-dlp and FFmpeg (again after either was downloaded).
@@ -1069,7 +1084,7 @@ impl SettingsPage {
             .child(row("xdytube", &format!("Version {}", env!("CARGO_PKG_VERSION")), div(), cx))
             .child(row("Video engine", video_engine, div(), cx))
             .child(row("yt-dlp", self.ytdlp_version.as_deref().unwrap_or("not installed"), div(), cx))
-            .child(row("Updates", "Download updates from the private GitHub releases page.", div(), cx))
+            .child(row("Updates", &self.update_status, pill("upd-check", Some("refresh-cw"), "Check", cx).on_click(cx.listener(|this, _, _, cx| this.check_updates(cx))), cx))
             .child(row("Releases", "Changelog and downloads on GitHub", pill("upd-page", Some("external-link"), "Open", cx).on_click(|_, _, _| {
                 let _ = open::that(crate::updater::RELEASES_PAGE);
             }), cx))
