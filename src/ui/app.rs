@@ -52,7 +52,7 @@ impl Route {
     }
 }
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod player_fullscreen_tests {
     use super::PlayerFullscreen;
 
@@ -75,7 +75,6 @@ mod player_fullscreen_tests {
     }
 }
 
-#[cfg(target_os = "macos")]
 #[derive(Clone, Copy, Default)]
 enum PlayerFullscreen {
     #[default]
@@ -84,7 +83,6 @@ enum PlayerFullscreen {
     Borderless,
 }
 
-#[cfg(target_os = "macos")]
 impl PlayerFullscreen {
     fn active(self) -> bool {
         !matches!(self, Self::Off)
@@ -107,10 +105,8 @@ impl PlayerFullscreen {
 pub struct UiState {
     pub theater: bool,
     keep_playing_on_navigation: bool,
-    #[cfg(target_os = "macos")]
+
     player_fullscreen: PlayerFullscreen,
-    #[cfg(not(target_os = "macos"))]
-    fullscreen: bool,
     pub sidebar_open: bool,
     pub content_width: Pixels,
     pub viewport: Size<Pixels>,
@@ -223,22 +219,15 @@ pub fn go_back_keep_playing(window: &mut Window, cx: &mut App) {
 
 pub fn is_fullscreen(_window: &Window, cx: &App) -> bool {
     let ui = cx.global::<UiState>();
-    #[cfg(target_os = "macos")]
-    return ui.player_fullscreen.active();
-    #[cfg(not(target_os = "macos"))]
-    return ui.fullscreen;
+
+    ui.player_fullscreen.active()
 }
 
 pub fn toggle_fullscreen(window: &mut Window, cx: &mut App) {
     let ui = cx.global_mut::<UiState>();
-    #[cfg(target_os = "macos")]
+
     if ui.player_fullscreen.toggle(window.is_fullscreen()) {
         window.toggle_simple_fullscreen();
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        window.toggle_fullscreen();
-        ui.fullscreen = !ui.fullscreen;
     }
     cx.refresh_windows();
 }
@@ -316,8 +305,6 @@ pub enum Dialog {
     SaveToPlaylist(VideoItem),
     TextPrompt { title: String, placeholder: String, on_submit: Arc<dyn Fn(String, &mut Window, &mut App)> },
     Confirm { title: String, body: String, confirm: String, on_confirm: Arc<dyn Fn(&mut Window, &mut App)> },
-    /// a newer version is on GitHub
-    Update,
 }
 
 /// Pulls the account's watch history (videos watched on other devices, with resume
@@ -662,7 +649,6 @@ impl AppView {
         crate::perf::mark("app shell");
         let page = build_page(&start, window, cx);
         crate::perf::mark("start page");
-        crate::updater::check_on_startup(cx);
         if let Route::Search(q) = &start {
             let q = q.clone();
             search.update(cx, |st, cx| st.set_value(q, window, cx));
@@ -1825,7 +1811,7 @@ impl AppView {
         let dialog_focused = self.dialog_input.read(cx).focus_handle(cx).is_focused(window);
         let k = ev.keystroke.key.as_str();
         let m = &ev.keystroke.modifiers;
-        let primary = if cfg!(target_os = "macos") { m.platform } else { m.control };
+        let primary = m.platform;
         if k == "f5" || (primary && k == "r" && !search_focused && !dialog_focused) {
             self.refresh(window, cx);
             return;
@@ -1841,7 +1827,7 @@ impl AppView {
                     self.close_tab(self.active_tab, window, cx);
                     return;
                 }
-                "w" if cfg!(target_os = "macos") && !m.shift => {
+                "w" if !m.shift => {
                     crate::save_window_bounds(window);
                     window.remove_window();
                     return;
@@ -2081,7 +2067,7 @@ impl AppView {
             return;
         }
         match (k, m.shift) {
-            ("f", false) if !cfg!(target_os = "macos") || matches!(self.route, Route::Watch { .. }) => toggle_fullscreen(window, cx),
+            ("f", false) if matches!(self.route, Route::Watch { .. }) => toggle_fullscreen(window, cx),
             ("t", false) => {
                 cx.global_mut::<UiState>().theater ^= true;
                 cx.notify();
@@ -2100,13 +2086,12 @@ impl AppView {
 
     // ───── chrome ─────
 
-    fn render_topbar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_topbar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let p = pal(cx);
         let can_back = !self.history.is_empty();
         let suggestions = if self.show_suggestions { self.all_suggestions() } else { Vec::new() };
         let hist: std::collections::HashSet<String> = self.history_suggestions.iter().cloned().collect();
         let sel = self.sel_suggestion;
-        let maximized = window.is_maximized();
         div()
             .id("topbar")
             .flex()
@@ -2257,8 +2242,7 @@ impl AppView {
                     .child(self.render_dl_button(cx))
                     .child(icon_button("settings", "settings", cx).on_click(cx.listener(|this, _, window, cx| this.go(Route::settings(), window, cx))))
                     .child(self.account_button(cx))
-                    .child(div().id("drag-c").w_3().h(px(56.)).window_control_area(WindowControlArea::Drag))
-                    .when(!cfg!(target_os = "macos"), |d| d.child(window_controls(maximized, cx))),
+                    .child(div().id("drag-c").w_3().h(px(56.)).window_control_area(WindowControlArea::Drag)),
             )
     }
 
@@ -2645,202 +2629,10 @@ impl AppView {
         )
     }
 
-    fn render_update(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        use crate::updater::Status;
-        let p = pal(cx);
-        let status = cx.default_global::<crate::updater::Updates>().status.clone();
-        let (rel, progress) = match status {
-            Status::Available(r) => (r, None),
-            Status::Downloading(r, f) => (r, Some(f)),
-            _ => {
-                return div().p_5().text_sm().text_color(p.text2).child("No update available").into_any_element();
-            }
-        };
-        // release notes are Markdown; long ones are cut at a line break
-        let mut notes = strip_download_section(&rel.notes.replace("\r\n", "\n"));
-        if notes.chars().count() > 1400 {
-            let cut: String = notes.chars().take(1400).collect();
-            notes = cut.rsplit_once('\n').map(|(a, _)| a.to_string()).unwrap_or(cut) + "\n\n…";
-        }
-        let has_installer = cfg!(windows) && rel.asset.is_some();
-        let size = rel.asset.as_ref().map(|a| a.size).filter(|s| *s > 0).map(|s| format!("{:.0} MB", s as f64 / 1_048_576.0));
-        let version = rel.name.trim_start_matches("xdytube").trim().trim_start_matches('v').to_string();
-        let accent = crate::ui::app_icon::icon_accent(store::settings_snapshot().accent);
-        let [c0, _, c2] = crate::ui::app_icon::accent_stops(accent);
-        let mut meta = vec![format!("You have {}", crate::updater::current_version())];
-        if rel.prerelease {
-            meta.push("Pre-release".into());
-        }
-        if let Some(sz) = size {
-            meta.push(sz);
-        }
-
-        // hero: accent gradient, glowing logo, the new version in big type
-        let hero = div()
-            .relative()
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap_2()
-            .pt_8()
-            .pb_6()
-            .px_6()
-            .overflow_hidden()
-            .bg(linear_gradient(135., linear_color_stop(rgb(c0), 0.), linear_color_stop(rgb(c2), 1.)))
-            // soft light spots
-            .child(div().absolute().top(px(-60.)).left(px(-40.)).size(px(180.)).rounded_full().bg(hsla(0., 0., 1., 0.12)))
-            .child(div().absolute().bottom(px(-80.)).right(px(-30.)).size(px(220.)).rounded_full().bg(hsla(0., 0., 0., 0.12)))
-            .child(
-                div()
-                    .relative()
-                    .size(px(84.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div().absolute().inset_0().rounded_full().bg(hsla(0., 0., 1., 0.25)).with_animation(
-                            "upd-glow",
-                            Animation::new(std::time::Duration::from_millis(1800)).repeat().with_easing(pulsating_between(0.0, 1.0)),
-                            |d, t| d.opacity(0.25 + 0.55 * t),
-                        ),
-                    )
-                    .child(crate::ui::logo(px(64.))),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1p5()
-                    .mt_2()
-                    .px_3()
-                    .py_0p5()
-                    .rounded_full()
-                    .bg(hsla(0., 0., 1., 0.18))
-                    .text_xs()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(white())
-                    .child(icon("sparkles").size_3p5().text_color(white()))
-                    .child("New version"),
-            )
-            .child(div().text_3xl().font_weight(FontWeight::BOLD).text_color(white()).child(format!("xdytube {version}")))
-            .child(div().text_sm().text_color(hsla(0., 0., 1., 0.85)).child(meta.join("  ·  ")));
-
-        let mut body = div().flex().flex_col().gap_4().p_6();
-        if !notes.trim().is_empty() {
-            body = body.child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(p.text2).child("WHAT'S NEW")).child(
-                div()
-                    .id("upd-notes")
-                    .when(notes.len() > 280, |d| d.h(px(230.)))
-                    .flex_none()
-                    .overflow_y_scroll()
-                    .pr_2()
-                    .text_sm()
-                    .text_color(p.text)
-                    .child(gpui_kit::base::TextView::markdown("upd-notes-md", notes).on_link_click(|url, _, _, _| {
-                        open_web(url.as_ref());
-                    })),
-            );
-        }
-        if let Some(f) = progress {
-            let f = f.clamp(0.0, 1.0);
-            body = body.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(
-                        div()
-                            .flex()
-                            .justify_between()
-                            .text_sm()
-                            .child(div().text_color(p.text).font_weight(FontWeight::MEDIUM).child(if f >= 0.999 { "Installing…" } else { "Downloading…" }))
-                            .child(div().text_color(p.text2).child(format!("{:.0}%", f * 100.0))),
-                    )
-                    .child(
-                        div().relative().w_full().h(px(8.)).rounded_full().overflow_hidden().bg(p.hover).child(
-                            div()
-                                .relative()
-                                .h_full()
-                                .rounded_full()
-                                .w(relative(f.max(0.02)))
-                                .bg(linear_gradient(90., linear_color_stop(rgb(c0), 0.), linear_color_stop(rgb(c2), 1.)))
-                                .overflow_hidden()
-                                // moving shine
-                                .child(
-                                    div().absolute().top_0().bottom_0().w(px(60.)).bg(linear_gradient(
-                                        90.,
-                                        linear_color_stop(hsla(0., 0., 1., 0.), 0.),
-                                        linear_color_stop(hsla(0., 0., 1., 0.45), 1.),
-                                    ))
-                                    .with_animation(
-                                        "upd-shine",
-                                        Animation::new(std::time::Duration::from_millis(1200)).repeat(),
-                                        |d, t| d.left(relative(-0.3 + 1.3 * t)),
-                                    ),
-                                ),
-                        ),
-                    )
-                    .child(div().text_xs().text_color(p.text2).child("xdytube restarts by itself when it's done.")),
-            );
-            return div().flex().flex_col().child(hero).child(body).into_any_element();
-        }
-        body = body.child(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .pt_1()
-                .child(
-                    div()
-                        .flex()
-                        .gap_4()
-                        .text_sm()
-                        .text_color(p.text2)
-                        .child(div().id("upd-skip").cursor_pointer().hover(|s| s.text_color(p.text)).child("Skip this version").on_click(cx.listener(|this, _, _, cx| {
-                            crate::updater::skip(cx);
-                            this.dialog = None;
-                            cx.notify();
-                        })))
-                        .child(div().id("upd-later").cursor_pointer().hover(|s| s.text_color(p.text)).child("Later").on_click(cx.listener(|this, _, _, cx| {
-                            this.dialog = None;
-                            cx.notify();
-                        }))),
-                )
-                .child(
-                    div()
-                        .id("upd-go")
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .h(px(44.))
-                        .px_6()
-                        .rounded_full()
-                        .cursor_pointer()
-                        .bg(linear_gradient(90., linear_color_stop(rgb(c0), 0.), linear_color_stop(rgb(c2), 1.)))
-                        .shadow_lg()
-                        .hover(|s| s.opacity(0.92))
-                        .active(|s| s.opacity(0.8))
-                        .text_color(white())
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(icon(if has_installer { "download" } else { "external-link" }).size_4().text_color(white()))
-                        .child(if has_installer { "Update now" } else { "Download" })
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if !has_installer {
-                                this.dialog = None;
-                            }
-                            crate::updater::install(cx);
-                            cx.notify();
-                        })),
-                ),
-        );
-        div().flex().flex_col().child(hero).child(body).into_any_element()
-    }
-
     fn render_dialog(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let p = pal(cx);
         let d = self.dialog.as_ref()?;
         let wide = matches!(d, Dialog::SignIn | Dialog::WebSignIn);
-        let hero = matches!(d, Dialog::Update);
         let body: AnyElement = match d {
             Dialog::SignIn => self.render_sign_in(cx),
             Dialog::WebSignIn => self.render_web_sign_in(cx),
@@ -2932,7 +2724,6 @@ impl AppView {
                     ),
                 )
                 .into_any_element(),
-            Dialog::Update => self.render_update(cx),
             Dialog::Confirm { title, body, confirm, .. } => div()
                 .flex()
                 .flex_col()
@@ -2972,11 +2763,11 @@ impl AppView {
                     .child(
                         div()
                             .id("dialog")
-                            .w(px(if hero { 520. } else if wide { 420. } else { 380. }))
-                            .max_h(px(if hero { 640. } else { 520. }))
-                            .when(!hero, |d| d.overflow_y_scroll().p_5())
-                            .when(hero, |d| d.overflow_hidden())
-                            .rounded(px(if hero { 20. } else { 12. }))
+                            .w(px(if wide { 420. } else { 380. }))
+                            .max_h(px(520.))
+                            .overflow_y_scroll()
+                            .p_5()
+                            .rounded(px(12.))
                             .bg(p.surface2)
                             .shadow_2xl()
                             .on_click(|_, _, cx| cx.stop_propagation())
@@ -3059,7 +2850,6 @@ impl AppView {
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         crate::perf::add(&crate::perf::APP_RENDERS, 1);
-        crate::display::mark_drawn();
         {
             static FIRST: std::sync::Once = std::sync::Once::new();
             FIRST.call_once(|| crate::perf::mark("first frame"));
@@ -3159,7 +2949,7 @@ impl Render for AppView {
             } else {
                 Some(self.render_sidebar(cx))
             };
-            root = root.child(self.render_topbar(window, cx)).children(self.render_tabs(cx)).child(
+            root = root.child(self.render_topbar(cx)).children(self.render_tabs(cx)).child(
                 div()
                     .flex()
                     .flex_1()
@@ -3183,114 +2973,20 @@ impl Render for AppView {
     }
 }
 
-/// Maximizes, or restores a maximized window.
-pub fn toggle_maximize(window: &mut Window) {
-    if !window.is_maximized() {
-        window.zoom_window();
-        return;
-    }
-    #[cfg(windows)]
-    {
-        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-        #[link(name = "user32")]
-        unsafe extern "system" {
-            fn ShowWindowAsync(hwnd: isize, cmd: i32) -> i32;
-        }
-        if let Ok(h) = HasWindowHandle::window_handle(&*window) {
-            if let RawWindowHandle::Win32(w) = h.as_raw() {
-                const SW_RESTORE: i32 = 9;
-                unsafe { ShowWindowAsync(w.hwnd.get(), SW_RESTORE) };
-            }
-        }
-    }
-}
-
-/// Release notes without their "Download" section (the app installs the update itself).
-fn strip_download_section(notes: &str) -> String {
-    let mut out = Vec::new();
-    let mut skipping = false;
-    for line in notes.lines() {
-        if line.starts_with("## ") {
-            skipping = line.trim_start_matches('#').trim().eq_ignore_ascii_case("download");
-        }
-        if !skipping {
-            out.push(line);
-        }
-    }
-    out.join("\n").trim().to_string()
-}
-
 /// Brings a minimized window back (leaves maximized/normal windows as they are).
 pub fn restore_window(window: &mut Window) {
     if !window_minimized(window) {
         return;
     }
-    #[cfg(target_os = "macos")]
+
     if let Some(window) = crate::macos::native_window(window) {
         window.deminiaturize(None);
-    }
-    #[cfg(windows)]
-    {
-        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-        #[link(name = "user32")]
-        unsafe extern "system" {
-            fn ShowWindowAsync(hwnd: isize, cmd: i32) -> i32;
-        }
-        if let Ok(h) = HasWindowHandle::window_handle(&*window) {
-            if let RawWindowHandle::Win32(w) = h.as_raw() {
-                const SW_RESTORE: i32 = 9;
-                unsafe { ShowWindowAsync(w.hwnd.get(), SW_RESTORE) };
-            }
-        }
     }
 }
 
 /// Empty top-bar space that moves the window (with snap and double-click maximize).
 fn drag_gap(id: &'static str) -> impl IntoElement {
     div().id(id).flex_1().min_w(px(24.)).h(px(56.)).window_control_area(WindowControlArea::Drag)
-}
-
-/// Minimize / maximize / close, drawn in the top bar. The OS handles the clicks
-/// (WindowControlArea), so Snap Layouts on the maximize button work as usual.
-fn window_controls(maximized: bool, cx: &App) -> impl IntoElement {
-    let p = pal(cx);
-    let btn = |id: &'static str, icon_name: &'static str, area: WindowControlArea, close: bool| {
-        div()
-            .id(id)
-            .flex()
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .w(px(46.))
-            .h(px(56.))
-            .text_color(p.text)
-            .window_control_area(area)
-            .when(close, |d| d.hover(|s| s.bg(rgb(0xc42b1c)).text_color(white())))
-            .when(!close, move |d| d.hover(move |s| s.bg(p.hover)))
-            .child(icon(icon_name).size_4().text_color(p.text))
-            // Handle the click ourselves too: Windows only routes it to the caption button
-            // when its hit test caught up with the cursor, which isn't always the case.
-            // Stopping propagation keeps Windows from acting on it a second time.
-            .on_click(move |_, window, cx| {
-                cx.stop_propagation();
-                match area {
-                    WindowControlArea::Min => window.minimize_window(),
-                    WindowControlArea::Max => toggle_maximize(window),
-                    WindowControlArea::Close => {
-                        crate::save_window_bounds(window);
-                        window.remove_window();
-                    }
-                    WindowControlArea::Drag => {}
-                }
-            })
-    };
-    div()
-        .flex()
-        .h_full()
-        .self_start()
-        .child(btn("win-min", "minus", WindowControlArea::Min, false))
-        .child(btn("win-max", if maximized { "copy" } else { "square" }, WindowControlArea::Max, false))
-        .child(btn("win-close", "x", WindowControlArea::Close, true))
 }
 
 fn build_page(route: &Route, window: &mut Window, cx: &mut App) -> AnyView {
@@ -3320,15 +3016,8 @@ pub fn reveal_in_folder(path: &str, cx: &mut App) {
         toast(cx, "File not found (moved or deleted)");
         return;
     }
-    #[cfg(windows)]
-    {
-        let _ = std::process::Command::new("explorer").arg(format!("/select,{path}")).spawn();
-    }
-    #[cfg(not(windows))]
-    {
-        if let Some(d) = std::path::Path::new(path).parent() {
-            let _ = open::that(d);
-        }
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        let _ = open::that(parent);
     }
 }
 
@@ -3351,31 +3040,9 @@ pub fn refresh_all_pages(cx: &mut App) {
     cx.refresh_windows();
 }
 
-/// True when the window is minimized (iconic). Elsewhere a hidden window counts as minimized.
+/// True when the macOS window is minimized.
 fn window_minimized(window: &Window) -> bool {
-    #[cfg(windows)]
-    {
-        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-        #[link(name = "user32")]
-        unsafe extern "system" {
-            fn IsIconic(hwnd: isize) -> i32;
-        }
-        if let Ok(h) = HasWindowHandle::window_handle(window) {
-            if let RawWindowHandle::Win32(w) = h.as_raw() {
-                return unsafe { IsIconic(w.hwnd.get()) } != 0;
-            }
-        }
-        false
-    }
-    #[cfg(target_os = "macos")]
-    {
-        crate::macos::native_window(window).is_some_and(|window| window.isMiniaturized())
-    }
-    #[cfg(not(any(windows, target_os = "macos")))]
-    {
-        let _ = window;
-        true
-    }
+    crate::macos::native_window(window).is_some_and(|window| window.isMiniaturized())
 }
 
 struct MiniDrag {

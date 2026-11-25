@@ -1,4 +1,4 @@
-# Contributing to Stream Tube
+# Contributing to xdytube
 
 Thanks for wanting to help. Bug fixes, small improvements and translations are
 always welcome. For anything bigger, please open an issue first so we can agree
@@ -6,16 +6,14 @@ on the approach before you spend time on it.
 
 ## Building
 
-See [Building](README.md#building) in the README. In short: Rust 1.85 or newer,
-`libmpv-2.dll` in `third_party/mpv/` on Windows (or libmpv from your package
-manager on Linux), then:
+Build on a Mac with Apple Silicon. Install Homebrew libmpv with `brew install mpv`. CI uses Rust `1.100.0`.
 
 ```sh
-cargo build --release
-cargo test --release
+cargo build --release --locked
+cargo test --release --locked
 ```
 
-For Apple Silicon, see the [macOS build and playback checks](README.md#macos-local-build).
+See the [project workflow](WORKFLOW.md) for working task numbers and release candidates.
 
 ## Making a change
 
@@ -42,9 +40,7 @@ For Apple Silicon, see the [macOS build and playback checks](README.md#macos-loc
 
 ## Pull request checks
 
-Pull requests are built and tested on Windows, Linux and Apple Silicon macOS.
-The Linux check builds the `.deb`, `.rpm` and AppImage. The macOS check uploads
-an ad hoc-signed ZIP of the app bundle.
+Pull requests are built and tested on macOS Apple Silicon. The manually dispatched release-candidate workflow produces an ad hoc-signed ZIP and its SHA-256 checksum.
 
 ## Reporting bugs
 

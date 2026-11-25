@@ -3,8 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-if [[ $(uname -s) != Darwin ]]; then
-    echo "Build the app on macOS with Xcode installed." >&2
+if [[ $(uname -s) != Darwin || $(uname -m) != arm64 ]]; then
+    echo "Build the app on macOS Apple Silicon with Xcode installed." >&2
     exit 1
 fi
 

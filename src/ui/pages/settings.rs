@@ -144,7 +144,6 @@ impl SettingsPage {
                 crate::api::streams::ytdlp_path().and_then(|p| {
                     let mut c = std::process::Command::new(p);
                     c.arg("--version");
-                    crate::api::streams::hide_window(&mut c);
                     c.output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                 })
             })
@@ -384,7 +383,6 @@ fn accent_swatches(cur: u32, cx: &App) -> Div {
                 .on_click(move |_, window, cx| {
                     store::update_settings(|s| s.accent = c);
                     after_change("accent", window, cx);
-                    crate::ui::app_icon::apply(cx);
                 }),
         );
     }
@@ -951,20 +949,6 @@ impl SettingsPage {
                 ),
                 cx,
             ))
-            .when(cfg!(target_os = "linux"), |d| {
-                d.child(row(
-                    "Display server",
-                    "On Wayland desktops, X11 runs through XWayland. Choose X11 if the window doesn't appear. Takes effect after restart",
-                    self.choice(
-                        "display",
-                        &[("auto".to_string(), "Auto"), ("wayland".to_string(), "Wayland"), ("x11".to_string(), "X11")],
-                        s.display_server.clone(),
-                        |s, v| s.display_server = v,
-                        cx,
-                    ),
-                    cx,
-                ))
-            })
             .child(row(
                 "yt-dlp path",
                 &match &self.ytdlp_version {
@@ -982,7 +966,6 @@ impl SettingsPage {
                         crate::api::streams::ytdlp_path().map(|p| {
                             let mut c = std::process::Command::new(p);
                             c.arg("-U");
-                            crate::api::streams::hide_window(&mut c);
                             c.output().map(|o| String::from_utf8_lossy(&o.stdout).lines().last().unwrap_or("").to_string()).unwrap_or_else(|e| e.to_string())
                         })
                     })
@@ -1024,19 +1007,10 @@ impl SettingsPage {
                 "FFmpeg",
                 match self.ffmpeg_found {
                     Some(true) => "Installed. Joins the video and audio of downloads above 360p",
-                    Some(false) if cfg!(target_os = "macos") => crate::downloads::GET_FFMPEG_HELP,
-                    Some(false) => "Needed to join video and audio above 360p. xdytube can fetch it for you",
+                    Some(false) => crate::downloads::GET_FFMPEG_HELP,
                     None => "",
                 },
-                if let Some(f) = crate::downloads::ffmpeg_fetch() {
-                    fetch_progress("ffmpeg-prog", f, cx)
-                } else if let Some(label) = crate::downloads::GET_FFMPEG.filter(|_| self.ffmpeg_found == Some(false)) {
-                    pill("get-ffmpeg", Some("download"), label, cx)
-                        .on_click(|_, _, cx| crate::downloads::fetch_ffmpeg(cx))
-                        .into_any_element()
-                } else {
-                    div().into_any_element()
-                },
+                div(),
                 cx,
             ))
     }
@@ -1086,41 +1060,16 @@ impl SettingsPage {
     }
 
     fn about(&self, cx: &mut Context<Self>) -> Div {
-        let s = store::settings_snapshot();
         let video_engine = if crate::player::mpv::available() {
             "libmpv"
-        } else if cfg!(target_os = "macos") {
-            "Install libmpv with brew install mpv, then restart xdytube"
-        } else if cfg!(windows) {
-            "libmpv-2.dll not found"
         } else {
-            "libmpv not found (install the libmpv package)"
+            "Install libmpv with brew install mpv, then restart xdytube"
         };
         card(cx)
             .child(row("xdytube", &format!("Version {}", env!("CARGO_PKG_VERSION")), div(), cx))
             .child(row("Video engine", video_engine, div(), cx))
             .child(row("yt-dlp", self.ytdlp_version.as_deref().unwrap_or("not installed"), div(), cx))
-            .when(cfg!(target_os = "macos"), |card| {
-                card.child(row("Updates", "Download updates from the private GitHub releases page.", div(), cx))
-            })
-            .when(!cfg!(target_os = "macos"), |card| {
-                use crate::updater::Status;
-                let status = cx.default_global::<crate::updater::Updates>().status.clone();
-                let text = match &status {
-                    Status::Idle => "Pre-releases included".to_string(),
-                    Status::Checking => "Checking…".to_string(),
-                    Status::UpToDate => "You have the latest version".to_string(),
-                    Status::Available(r) => format!("{} is available", r.name),
-                    Status::Downloading(_, f) => format!("Downloading… {:.0}%", f * 100.0),
-                    Status::Error(e) => format!("Could not check: {e}"),
-                };
-                let btn = match &status {
-                    Status::Available(_) => pill("upd-show", Some("download"), "Update", cx).on_click(|_, window, cx| crate::ui::app::open_dialog(crate::ui::app::Dialog::Update, window, cx)),
-                    _ => pill("upd-check", Some("refresh-cw"), "Check for updates", cx).on_click(|_, _, cx| crate::updater::check_now(true, cx)),
-                };
-                card.child(row("Updates", &text, btn, cx))
-                    .child(row("Check for updates at startup", "", switch("upd-auto", s.check_updates, |s, v| s.check_updates = v, cx), cx))
-            })
+            .child(row("Updates", "Download updates from the private GitHub releases page.", div(), cx))
             .child(row("Releases", "Changelog and downloads on GitHub", pill("upd-page", Some("external-link"), "Open", cx).on_click(|_, _, _| {
                 let _ = open::that(crate::updater::RELEASES_PAGE);
             }), cx))
@@ -1271,7 +1220,6 @@ fn fetch_progress(id: &'static str, f: crate::downloads::ToolFetch, cx: &App) ->
     let p = pal(cx);
     let (label, frac) = match f {
         crate::downloads::ToolFetch::Downloading(n) => (format!("Downloading… {n}%"), n as f32 / 100.0),
-        crate::downloads::ToolFetch::Unpacking => ("Unpacking…".to_string(), 1.0),
     };
     div()
         .id(id)

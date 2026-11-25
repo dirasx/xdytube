@@ -1,5 +1,4 @@
 pub mod app;
-pub mod app_icon;
 pub mod cards;
 pub mod image_cache;
 pub mod pages;
@@ -388,20 +387,9 @@ pub fn copy_to_clipboard(text: String, cx: &mut App) {
     toast(cx, "Link copied to clipboard");
 }
 
-/// Brand colors of the xdytube logo.
-pub const BRAND_PINK: u32 = 0xF0307E;
-pub const BRAND_VIOLET: u32 = 0x7A3CF5;
-
-/// The macOS app mark, or the accent-coloured mark on other platforms.
+/// The xdytube app mark.
 pub fn logo(size: Pixels) -> Img {
-    #[cfg(target_os = "macos")]
-    let path = SharedString::from("brand/logo.svg");
-    #[cfg(not(target_os = "macos"))]
-    let path = {
-        let accent = app_icon::icon_accent(crate::store::settings_snapshot().accent);
-        SharedString::from(format!("brand/logo-{accent:06x}.svg"))
-    };
-    img(path).size(size).flex_none()
+    img(SharedString::from("brand/logo.svg")).size(size).flex_none()
 }
 
 /// "xdytube" wordmark next to the logo.

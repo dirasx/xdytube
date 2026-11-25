@@ -221,64 +221,23 @@ fn browser_choices(candidates: impl IntoIterator<Item = (&'static str, PathBuf)>
 
 /// Installed Chromium-based browsers that the sign-in can open.
 pub fn installed_browsers() -> Vec<Browser> {
-    #[cfg(windows)]
-    {
-        let pf = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into());
-        let pf86 = std::env::var("ProgramFiles(x86)").unwrap_or_else(|_| r"C:\Program Files (x86)".into());
-        let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
-        let candidates = [
-            ("Google Chrome", format!(r"{pf}\Google\Chrome\Application\chrome.exe")),
-            ("Google Chrome", format!(r"{pf86}\Google\Chrome\Application\chrome.exe")),
-            ("Google Chrome", format!(r"{local}\Google\Chrome\Application\chrome.exe")),
-            ("Microsoft Edge", format!(r"{pf86}\Microsoft\Edge\Application\msedge.exe")),
-            ("Microsoft Edge", format!(r"{pf}\Microsoft\Edge\Application\msedge.exe")),
-            ("Brave", format!(r"{pf}\BraveSoftware\Brave-Browser\Application\brave.exe")),
-            ("Brave", format!(r"{local}\BraveSoftware\Brave-Browser\Application\brave.exe")),
-            ("Chromium", format!(r"{local}\Chromium\Application\chrome.exe")),
-        ];
-        browser_choices(candidates.into_iter().map(|(name, path)| (name, PathBuf::from(path))))
-    }
-    #[cfg(not(windows))]
-    {
-        let mut candidates = Vec::new();
-        #[cfg(target_os = "macos")]
-        {
-            let mut directories = vec![PathBuf::from("/Applications")];
-            directories.extend(dirs::home_dir().map(|home| home.join("Applications")));
-            let apps = [
-                ("Google Chrome", "Google Chrome.app/Contents/MacOS/Google Chrome"),
-                ("Yandex Browser", "Yandex.app/Contents/MacOS/Yandex"),
-                ("Microsoft Edge", "Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
-                ("Brave", "Brave Browser.app/Contents/MacOS/Brave Browser"),
-                ("Chromium", "Chromium.app/Contents/MacOS/Chromium"),
-                ("Vivaldi", "Vivaldi.app/Contents/MacOS/Vivaldi"),
-            ];
-            for (name, relative_path) in apps {
-                for directory in &directories {
-                    candidates.push((name, directory.join(relative_path)));
-                }
-            }
+    let mut candidates = Vec::new();
+    let mut directories = vec![PathBuf::from("/Applications")];
+    directories.extend(dirs::home_dir().map(|home| home.join("Applications")));
+    let apps = [
+        ("Google Chrome", "Google Chrome.app/Contents/MacOS/Google Chrome"),
+        ("Yandex Browser", "Yandex.app/Contents/MacOS/Yandex"),
+        ("Microsoft Edge", "Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+        ("Brave", "Brave Browser.app/Contents/MacOS/Brave Browser"),
+        ("Chromium", "Chromium.app/Contents/MacOS/Chromium"),
+        ("Vivaldi", "Vivaldi.app/Contents/MacOS/Vivaldi"),
+    ];
+    for (name, relative_path) in apps {
+        for directory in &directories {
+            candidates.push((name, directory.join(relative_path)));
         }
-        let names = [
-            ("Google Chrome", "google-chrome"),
-            ("Google Chrome", "google-chrome-stable"),
-            ("Chromium", "chromium"),
-            ("Chromium", "chromium-browser"),
-            ("Brave", "brave-browser"),
-            ("Brave", "brave"),
-            ("Microsoft Edge", "microsoft-edge"),
-            ("Microsoft Edge", "microsoft-edge-stable"),
-            ("Vivaldi", "vivaldi"),
-        ];
-        if let Some(path) = std::env::var_os("PATH") {
-            for (name, binary) in names {
-                for directory in std::env::split_paths(&path) {
-                    candidates.push((name, directory.join(binary)));
-                }
-            }
-        }
-        browser_choices(candidates)
     }
+    browser_choices(candidates)
 }
 
 fn local_agent() -> ureq::Agent {

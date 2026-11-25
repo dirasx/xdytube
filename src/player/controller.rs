@@ -1171,20 +1171,11 @@ fn average_color(data: &[u8], w: u32, h: u32) -> Option<Rgba> {
 /// The font for a caption font choice. libass looks fonts up by name, and finds
 /// the nearest match when one isn't installed.
 pub fn caption_font(key: &str) -> &'static str {
-    if cfg!(windows) {
-        match key {
-            "serif" => "Georgia",
-            "mono" => "Consolas",
-            "casual" => "Comic Sans MS",
-            _ => "Segoe UI",
-        }
-    } else {
-        match key {
-            "serif" => "DejaVu Serif",
-            "mono" => "DejaVu Sans Mono",
-            "casual" => "Comic Neue",
-            _ => "DejaVu Sans",
-        }
+    match key {
+        "serif" => "DejaVu Serif",
+        "mono" => "DejaVu Sans Mono",
+        "casual" => "Comic Neue",
+        _ => "DejaVu Sans",
     }
 }
 

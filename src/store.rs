@@ -21,8 +21,6 @@ pub struct Settings {
     pub language: String,
     // Backend
     pub stream_backend: String,
-    /// Linux: "auto", "x11" or "wayland" (see display.rs)
-    pub display_server: String,
     pub ytdlp_path: String,
     pub proxy: String,
     // Player
@@ -67,7 +65,6 @@ pub struct Settings {
     pub history_enabled: bool,
     pub search_history_enabled: bool,
     /// look for a new version on GitHub at startup
-    pub check_updates: bool,
     // Subscriptions
     pub feed_source: String,
     pub feed_include_shorts: bool,
@@ -145,7 +142,6 @@ impl Default for Settings {
             region: "US".into(),
             language: "en".into(),
             stream_backend: "auto".into(),
-            display_server: "auto".into(),
             ytdlp_path: String::new(),
             proxy: String::new(),
             default_quality: 1080,
@@ -185,7 +181,6 @@ impl Default for Settings {
             blocked_channels: Vec::new(),
             history_enabled: true,
             search_history_enabled: true,
-            check_updates: true,
             feed_source: "full".into(),
             feed_include_shorts: false,
             feed_include_live: true,

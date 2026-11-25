@@ -8,7 +8,7 @@ use std::ffi::OsString;
 use std::path::Path;
 
 pub fn homebrew_prefix() -> &'static Path {
-    Path::new(if cfg!(target_arch = "aarch64") { "/opt/homebrew" } else { "/usr/local" })
+    Path::new("/opt/homebrew")
 }
 
 /// Finder launches do not inherit the shell's Homebrew paths.

@@ -2,11 +2,14 @@ name: macOS build
 
 on:
   push:
-    branches: [main, community/macos-apple-silicon, codex/macos-0.7.2-alpha]
-    paths: ["src/**", "Cargo.toml", "Cargo.lock", "build.rs", "assets/**", "packaging/macos/**", ".github/workflows/macos.yml"]
+    branches: [main]
+    paths: ["src/**", "Cargo.toml", "Cargo.lock", "assets/**", "packaging/macos/**", ".github/workflows/macos.yml"]
   pull_request:
-  workflow_dispatch:
   workflow_call:
+    inputs:
+      package:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -25,18 +28,28 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build and package
+      - name: Build and test on Apple Silicon
+        run: |
+          test "$(uname -m)" = arm64
+          cargo build --release --locked
+          cargo test --release --locked
+
+      - name: Package release candidate
+        if: inputs.package
         run: |
           bundle=$(bash packaging/macos/build-app.sh)
           test "$(lipo -archs "$bundle/Contents/MacOS/xdytube")" = arm64
+          codesign --verify --strict "$bundle"
           version=$(cargo metadata --format-version 1 --no-deps --locked | plutil -extract packages.0.version raw -o - -)
-          ditto -c -k --sequesterRsrc --keepParent "$bundle" "dist/xdytube-$version-macos-arm64.zip"
-
-      - name: Test
-        run: cargo test --release --locked
+          archive="xdytube-$version-macos-arm64.zip"
+          ditto -c -k --norsrc --keepParent "$bundle" "dist/$archive"
+          (cd dist && shasum -a 256 "$archive" > SHA256SUMS.txt)
 
       - uses: actions/upload-artifact@v4
+        if: inputs.package
         with:
           name: macos-arm64
-          path: dist/*-macos-arm64.zip
+          path: |
+            dist/*-macos-arm64.zip
+            dist/SHA256SUMS.txt
           if-no-files-found: error

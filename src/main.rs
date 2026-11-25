@@ -1,8 +1,8 @@
-#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+compile_error!("xdytube is supported on macOS Apple Silicon");
 mod api;
 mod assets;
 mod credentials;
-mod display;
 mod perf;
 mod recommend;
 mod downloads;
@@ -10,7 +10,7 @@ mod feed;
 mod import;
 mod links;
 mod locale;
-#[cfg(target_os = "macos")]
+
 mod macos;
 mod player;
 mod profile;
@@ -66,7 +66,7 @@ fn main() {
         std::env::set_var("no_proxy", "127.0.0.1,localhost,::1");
         std::env::set_var("NO_PROXY", "127.0.0.1,localhost,::1");
     }
-    #[cfg(target_os = "macos")]
+
     if let Some(path) = macos::path_with_homebrew() {
         // SAFETY: this still runs before any other thread starts.
         unsafe { std::env::set_var("PATH", path) };
@@ -78,11 +78,9 @@ fn main() {
     }
     store::init();
     perf::mark("store");
-    display::choose();
-    perf::mark("display");
     // one running app: a second launch (e.g. a clicked streamtube: link) hands over and exits
     let arg = std::env::args().nth(1).unwrap_or_default();
-    if !display::relaunched() && links::forward_to_running(&arg) {
+    if links::forward_to_running(&arg) {
         return;
     }
     let (incoming_tx, mut incoming_rx) = futures::channel::mpsc::unbounded();
@@ -91,7 +89,7 @@ fn main() {
     let application = gpui_kit::application()
         .with_assets(assets::Assets)
         .with_http_client(ui::UreqHttp::new());
-    #[cfg(target_os = "macos")]
+
     {
         let urls_tx = incoming_tx.clone();
         application.on_open_urls(move |urls| {
@@ -119,7 +117,7 @@ fn main() {
             window_bounds: Some(saved_window_bounds(cx)),
             titlebar: Some(TitlebarOptions {
                 title: Some("xdytube".into()),
-                appears_transparent: !cfg!(target_os = "macos"),
+                appears_transparent: false,
                 ..Default::default()
             }),
             window_min_size: Some(size(px(720.), px(480.))),
@@ -130,12 +128,9 @@ fn main() {
             cx.new(|cx| ui::app::AppView::new(window, cx))
         })
         .expect("failed to open window");
-        #[cfg(target_os = "macos")]
+
         macos::init_menu(main_window, cx);
         perf::mark("window open");
-        ui::app_icon::apply(cx);
-        links::register_scheme();
-        perf::mark("icon");
         cx.spawn(async move |cx| {
             use futures::StreamExt;
             while let Some(arg) = incoming_rx.next().await {

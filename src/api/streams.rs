@@ -583,8 +583,8 @@ fn find_ytdlp(custom: &str) -> Option<String> {
     if !custom.is_empty() {
         candidates.push(custom.to_string());
     }
-    // bundled next to the app (installer) or kept in the data folder
-    let exe = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
+    // bundled next to the app or kept in the data folder
+    let exe = "yt-dlp";
     if let Some(d) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
         let p = d.join(exe);
         if p.is_file() {
@@ -599,21 +599,11 @@ fn find_ytdlp(custom: &str) -> Option<String> {
     for c in candidates {
         let mut cmd = Command::new(&c);
         cmd.arg("--version");
-        hide_window(&mut cmd);
         if cmd.output().map(|o| o.status.success()).unwrap_or(false) {
             return Some(c);
         }
     }
     None
-}
-
-pub fn hide_window(cmd: &mut Command) {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
-    let _ = cmd;
 }
 
 pub fn ytdlp_streams(video_id: &str) -> Result<StreamInfo> {
@@ -627,13 +617,11 @@ pub fn ytdlp_streams(video_id: &str) -> Result<StreamInfo> {
         cmd.arg("--force-ipv4");
     }
     cmd.arg(format!("https://www.youtube.com/watch?v={video_id}"));
-    hide_window(&mut cmd);
     let mut out = cmd.output()?;
     if !out.status.success() && crate::downloads::retry_with_ios(&String::from_utf8_lossy(&out.stderr)) {
         // videos made for kids: yt-dlp's default clients refuse them, its iOS client doesn't
         let mut retry = Command::new(ytdlp_path().unwrap_or_default());
         retry.args(cmd.get_args()).arg("--extractor-args").arg(crate::downloads::YTDLP_IOS);
-        hide_window(&mut retry);
         if let Ok(o) = retry.output() {
             if o.status.success() {
                 out = o;

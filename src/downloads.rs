@@ -1,5 +1,5 @@
 //! Download manager (yt-dlp when available, native fallback) and external player launching.
-use crate::api::streams::{self, hide_window};
+use crate::api::streams;
 use crate::api::types::VideoItem;
 use crate::store;
 use crate::ui::toast;
@@ -130,21 +130,9 @@ pub fn start(video: VideoItem, format: Option<String>, cx: &mut App) {
     }
     // separate video + audio streams need FFmpeg to be joined into one file
     if fmt != "audio" && fmt != "single" && streams::ytdlp_path().is_some() && ffmpeg_path().is_none() {
-        if FFMPEG_FETCHING.load(Ordering::SeqCst) {
-            // queued behind the FFmpeg download
-            PENDING.lock().push((video, Some(fmt)));
-            return;
-        }
-        let v2 = video.clone();
-        let mut actions: Vec<(SharedString, Arc<dyn Fn(&mut Window, &mut App)>)> = Vec::new();
-        if let Some(label) = GET_FFMPEG {
-            actions.push((label.into(), Arc::new(move |_, cx| {
-                PENDING.lock().push((video.clone(), Some(fmt.clone())));
-                fetch_ffmpeg(cx);
-            })));
-        }
-        actions.push(("Download 360p".into(), Arc::new(move |_, cx| start(v2.clone(), Some("single".into()), cx))));
-        crate::ui::toast_with_actions(cx, GET_FFMPEG_HELP, actions);
+        crate::ui::toast_with_actions(cx, GET_FFMPEG_HELP, vec![
+            ("Download 360p".into(), Arc::new(move |_, cx| start(video.clone(), Some("single".into()), cx))),
+        ]);
         return;
     }
     let d = cx.default_global::<Downloads>();
@@ -338,7 +326,6 @@ fn ytdlp_run(bin: &str, dir: &std::path::Path, url: &str, fmt: &str, s: &store::
         if s.sponsorblock && ffmpeg_path().is_some() {
             cmd.args(["--sponsorblock-mark", "all"]);
         }
-        hide_window(&mut cmd);
         let mut child = cmd.spawn()?;
         progress(0.0, "Getting video info…");
         let stdout = child.stdout.take().unwrap();
@@ -434,26 +421,9 @@ pub fn open_external_at(id: &str, time: f64, cx: &mut App) {
 /// The external player "Automatic" would use: VLC or mpv when installed.
 pub fn detect_player() -> Option<(&'static str, String)> {
     let on_path = |exe: &str| -> Option<String> {
-        let name = if cfg!(windows) { format!("{exe}.exe") } else { exe.to_string() };
-        std::env::split_paths(&std::env::var_os("PATH")?).map(|d| d.join(&name)).find(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned())
+        std::env::split_paths(&std::env::var_os("PATH")?).map(|d| d.join(exe)).find(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned())
     };
     let mut found: Vec<(&'static str, String)> = Vec::new();
-    if cfg!(windows) {
-        for var in ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"] {
-            if let Some(root) = std::env::var_os(var) {
-                let p = std::path::Path::new(&root).join("VideoLAN").join("VLC").join("vlc.exe");
-                if p.is_file() {
-                    found.push(("VLC", p.to_string_lossy().into_owned()));
-                }
-            }
-        }
-        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-            let p = std::path::Path::new(&local).join("Programs").join("mpv").join("mpv.exe");
-            if p.is_file() {
-                found.push(("mpv", p.to_string_lossy().into_owned()));
-            }
-        }
-    }
     found.extend(on_path("vlc").map(|p| ("VLC", p)));
     found.extend(on_path("mpv").map(|p| ("mpv", p)));
     found.extend(on_path("celluloid").map(|p| ("Celluloid", p)));
@@ -619,17 +589,7 @@ pub fn open_file(path: &str, cx: &mut App) {
         toast(cx, "File not found (moved or deleted)");
         return;
     };
-    // the default app is launched off the UI thread; Explorer is the most
-    // reliable way to hand a file to its default app on Windows
     std::thread::spawn(move || {
-        #[cfg(windows)]
-        {
-            let mut c = Command::new("explorer");
-            c.arg(&path);
-            if c.spawn().is_ok() {
-                return;
-            }
-        }
         let _ = open::that(&path);
     });
 }
@@ -698,67 +658,29 @@ pub fn load_history(cx: &mut App) {
 
 // ── FFmpeg (joins separate video and audio streams) ──
 
-static FFMPEG_FETCHING: AtomicBool = AtomicBool::new(false);
 static PENDING: Mutex<Vec<(VideoItem, Option<String>)>> = Mutex::new(Vec::new());
 
-/// yt-dlp's FFmpeg builds: (repository, release, file). The Linux one is static,
-/// so it runs on any distribution.
-const FFMPEG_ASSET: Option<(&str, &str, &str)> = if cfg!(target_os = "macos") {
-    None
-} else {
-    Some((
-        "yt-dlp/FFmpeg-Builds",
-        "tags/latest",
-        if cfg!(windows) { "ffmpeg-master-latest-win64-gpl-shared.zip" } else { "ffmpeg-master-latest-linux64-gpl.tar.xz" },
-    ))
-};
-
-pub const GET_FFMPEG: Option<&str> = if cfg!(target_os = "macos") {
-    None
-} else if cfg!(windows) {
-    Some("Get FFmpeg (91 MB)")
-} else {
-    Some("Get FFmpeg (158 MB)")
-};
-pub const GET_FFMPEG_HELP: &str = if cfg!(target_os = "macos") {
-    "Videos above 360p need FFmpeg. Run brew install ffmpeg, then restart xdytube."
-} else {
-    "Videos above 360p need FFmpeg to join video and audio"
-};
-pub const GET_YTDLP: &str = if cfg!(target_os = "macos") {
-    "Get yt-dlp"
-} else if cfg!(windows) {
-    "Get yt-dlp (24 MB)"
-} else {
-    "Get yt-dlp (41 MB)"
-};
+pub const GET_FFMPEG_HELP: &str = "Videos above 360p need FFmpeg. Run brew install ffmpeg, then restart xdytube.";
+pub const GET_YTDLP: &str = "Get yt-dlp";
 
 /// Downloads a file from a GitHub release into `dest`, and keeps it only if it
 /// matches the SHA-256 GitHub lists for it. `release` is "latest" or "tags/<tag>".
 /// How far the FFmpeg / yt-dlp download has got: idle, a percentage, or unpacking.
-static FFMPEG_PCT: AtomicU32 = AtomicU32::new(IDLE);
 static YTDLP_PCT: AtomicU32 = AtomicU32::new(IDLE);
 const IDLE: u32 = u32::MAX;
-const UNPACKING: u32 = 1000;
 /// bumped each time a tool download finishes, so pages showing whether it's
 /// installed look again without being reopened
 static TOOLS_GEN: AtomicU64 = AtomicU64::new(0);
 
 pub enum ToolFetch {
     Downloading(u32),
-    Unpacking,
 }
 
 fn fetch_state(a: &AtomicU32) -> Option<ToolFetch> {
     match a.load(Ordering::SeqCst) {
         IDLE => None,
-        UNPACKING => Some(ToolFetch::Unpacking),
         n => Some(ToolFetch::Downloading(n.min(100))),
     }
-}
-
-pub fn ffmpeg_fetch() -> Option<ToolFetch> {
-    fetch_state(&FFMPEG_PCT)
 }
 
 pub fn ytdlp_fetch() -> Option<ToolFetch> {
@@ -821,7 +743,7 @@ fn ffmpeg_dir() -> std::path::PathBuf {
 
 /// FFmpeg next to the app, in the app's data folder, or on PATH.
 pub fn ffmpeg_path() -> Option<String> {
-    let exe = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    let exe = "ffmpeg";
     let mut cands = vec![ffmpeg_dir().join(exe)];
     if let Some(d) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
         cands.push(d.join(exe));
@@ -834,80 +756,9 @@ pub fn ffmpeg_path() -> Option<String> {
     let on_path = *ON_PATH.get_or_init(|| {
         let mut c = Command::new("ffmpeg");
         c.arg("-version").stdout(Stdio::null()).stderr(Stdio::null());
-        hide_window(&mut c);
         c.status().map(|s| s.success()).unwrap_or(false)
     });
     on_path.then(|| "ffmpeg".to_string())
-}
-
-/// Downloads FFmpeg into the data folder, then starts the downloads waiting for it.
-pub fn fetch_ffmpeg(cx: &mut App) {
-    let Some(asset) = FFMPEG_ASSET else { return };
-    if FFMPEG_FETCHING.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    FFMPEG_PCT.store(0, Ordering::SeqCst);
-    toast(cx, "Downloading FFmpeg…");
-    repaint_while(&FFMPEG_FETCHING, cx);
-    cx.spawn(async move |cx| {
-        let res = crate::ui::blocking(move || -> anyhow::Result<()> {
-            let dir = ffmpeg_dir();
-            let tmp = store::data_dir().join("ffmpeg-download");
-            let _ = std::fs::remove_dir_all(&tmp);
-            std::fs::create_dir_all(&tmp)?;
-            let archive = tmp.join(asset.2);
-            download_github_asset_progress(asset, &archive, Some(&FFMPEG_PCT))?;
-            FFMPEG_PCT.store(UNPACKING, Ordering::SeqCst);
-            // Windows 10+ ships bsdtar, which reads zip files; GNU tar unpacks .tar.xz
-            let mut c = Command::new("tar");
-            c.arg(if cfg!(windows) { "-xf" } else { "-xJf" }).arg(&archive).arg("-C").arg(&tmp);
-            hide_window(&mut c);
-            if !c.status()?.success() {
-                anyhow::bail!("could not unpack FFmpeg");
-            }
-            let exe = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
-            let bin = std::fs::read_dir(&tmp)?
-                .filter_map(Result::ok)
-                .map(|e| e.path().join("bin"))
-                .find(|p| p.join(exe).is_file())
-                .ok_or_else(|| anyhow::anyhow!("{exe} not found in the archive"))?;
-            let _ = std::fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(&dir)?;
-            for e in std::fs::read_dir(&bin)?.filter_map(Result::ok) {
-                // ffmpeg and ffprobe (and on Windows their DLLs); ffplay isn't needed
-                if e.file_name().to_string_lossy().starts_with("ffplay") {
-                    continue;
-                }
-                let to = dir.join(e.file_name());
-                std::fs::copy(e.path(), &to)?;
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    std::fs::set_permissions(&to, std::fs::Permissions::from_mode(0o755))?;
-                }
-            }
-            let _ = std::fs::remove_dir_all(&tmp);
-            Ok(())
-        })
-        .await;
-        FFMPEG_FETCHING.store(false, Ordering::SeqCst);
-        FFMPEG_PCT.store(IDLE, Ordering::SeqCst);
-        TOOLS_GEN.fetch_add(1, Ordering::SeqCst);
-        let _ = cx.update(|cx| {
-            cx.refresh_windows();
-            let pending: Vec<_> = std::mem::take(&mut *PENDING.lock());
-            match res {
-                Ok(()) => {
-                    toast(cx, "FFmpeg is ready");
-                    for (v, f) in pending {
-                        start(v, f, cx);
-                    }
-                }
-                Err(e) => toast(cx, format!("FFmpeg download failed: {e}")),
-            }
-        });
-    })
-    .detach();
 }
 
 // ── yt-dlp (the standalone build, kept in the data folder) ──
@@ -917,7 +768,7 @@ static YTDLP_FETCHING: AtomicBool = AtomicBool::new(false);
 const YTDLP_ASSET: (&str, &str, &str) = (
     "yt-dlp/yt-dlp",
     "latest",
-    if cfg!(windows) { "yt-dlp.exe" } else if cfg!(target_os = "macos") { "yt-dlp_macos" } else { "yt-dlp_linux" },
+    "yt-dlp_macos",
 );
 
 /// Downloads yt-dlp into the data folder, then starts the downloads waiting for it.
@@ -930,7 +781,7 @@ pub fn fetch_ytdlp(cx: &mut App) {
     repaint_while(&YTDLP_FETCHING, cx);
     cx.spawn(async move |cx| {
         let res = crate::ui::blocking(|| -> anyhow::Result<()> {
-            let name = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
+            let name = "yt-dlp";
             let dest = store::data_dir().join(name);
             let tmp = store::data_dir().join(format!("{name}.part"));
             download_github_asset_progress(YTDLP_ASSET, &tmp, Some(&YTDLP_PCT))?;

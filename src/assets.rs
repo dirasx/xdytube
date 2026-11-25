@@ -14,15 +14,7 @@ pub struct Assets;
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
         if path == "brand/logo.svg" {
-            #[cfg(target_os = "macos")]
             return Ok(Some(Cow::Borrowed(include_bytes!("../assets/macos-logo.svg"))));
-            #[cfg(not(target_os = "macos"))]
-            return Ok(Some(Cow::Borrowed(include_bytes!("../assets/logo.svg"))));
-        }
-        if let Some(hex) = path.strip_prefix("brand/logo-").and_then(|p| p.strip_suffix(".svg")) {
-            if let Ok(accent) = u32::from_str_radix(hex, 16) {
-                return Ok(Some(Cow::Owned(crate::ui::app_icon::logo_svg(accent).into_bytes())));
-            }
         }
         if let Some((_, body)) = EXTRA.iter().find(|(p, _)| *p == path) {
             return Ok(Some(Cow::Owned(format!("{SVG_HEAD}{body}</svg>").into_bytes())));

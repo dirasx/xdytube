@@ -44,14 +44,6 @@ lto = "thin"
 [profile.dev]
 opt-level = 1
 
-[build-dependencies]
-embed-resource = "3"
-
 [dev-dependencies]
 # Use the same GPUI engine as gpui-kit for headless player tests.
 gpui = { package = "gpui-pre", version = "=0.3.12", features = ["test-support"] }
-
-# GPUI's Windows text backend with one fix: right-to-left text (Arabic, Hebrew)
-# was drawn mirrored. See vendor/gpui-pre-windows/PATCHES.md.
-[patch.crates-io]
-gpui-pre-windows = { path = "vendor/gpui-pre-windows" }
