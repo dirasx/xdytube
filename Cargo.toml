@@ -29,10 +29,13 @@ tungstenite = { version = "0.30.0", default-features = false, features = ["hands
 tempfile = "3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
 security-framework = "3.7"
 libc = "0.2"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["NSButton", "NSControl", "NSResponder", "NSView", "NSWindow"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSButton", "NSControl", "NSCursor", "NSResponder", "NSView", "NSWindow"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSDictionary", "NSObject", "NSString"] }
+objc2-media-player = { version = "0.3", default-features = false, features = ["block2", "MPMediaItem", "MPNowPlayingInfoCenter", "MPRemoteCommand", "MPRemoteCommandCenter", "MPRemoteCommandEvent"] }
 
 [profile.dev.package."*"]
 opt-level = 2

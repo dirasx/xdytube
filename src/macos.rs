@@ -7,6 +7,8 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::ffi::OsString;
 use std::path::Path;
 
+pub(crate) mod media_keys;
+
 pub fn homebrew_prefix() -> &'static Path {
     Path::new("/opt/homebrew")
 }

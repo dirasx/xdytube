@@ -27,6 +27,24 @@ fn open_player(
 }
 
 #[gpui::test]
+fn fullscreen_cursor_follows_idle_controls(cx: &mut TestAppContext) {
+    use std::time::{Duration, Instant};
+
+    let (_, view, _) = open_player(cx);
+    view.update(cx, |view, _| {
+        view.hovering = true;
+        view.show_until = Instant::now() - Duration::from_secs(1);
+        assert!(view.should_hide_cursor(true, true, view.controls_visible(false)));
+        assert!(!view.should_hide_cursor(false, true, view.controls_visible(false)));
+        assert!(!view.should_hide_cursor(true, false, view.controls_visible(false)));
+        assert!(!view.should_hide_cursor(true, true, view.controls_visible(true)));
+
+        view.show_until = Instant::now() + Duration::from_secs(1);
+        assert!(!view.should_hide_cursor(true, true, view.controls_visible(false)));
+    });
+}
+
+#[gpui::test]
 fn seek_drag_ends_outside_the_track(cx: &mut TestAppContext) {
     let (player, view, mut ui) = open_player(cx);
     let track = view.read_with(cx, |view, _| view.seek_bounds.get());

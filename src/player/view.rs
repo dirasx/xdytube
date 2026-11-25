@@ -32,6 +32,7 @@ pub struct PlayerView {
     pub pip: bool,
     show_until: Instant,
     hovering: bool,
+    cursor_hidden: bool,
     menu: Option<Menu>,
     menu_closed_at: std::time::Instant,
     seek_bounds: Rc<Cell<Bounds<Pixels>>>,
@@ -62,6 +63,7 @@ impl PlayerView {
             pip: false,
             show_until: Instant::now() + Duration::from_secs(3),
             hovering: false,
+            cursor_hidden: false,
             menu: None,
             menu_closed_at: std::time::Instant::now() - std::time::Duration::from_secs(5),
             seek_bounds: Rc::new(Cell::new(Bounds::default())),
@@ -107,6 +109,18 @@ impl PlayerView {
     fn controls_visible(&self, paused: bool) -> bool {
         paused || self.menu.is_some() || self.drag_seek.is_some() || Instant::now() < self.show_until
     }
+
+    fn should_hide_cursor(&self, fullscreen: bool, active: bool, show_controls: bool) -> bool {
+        fullscreen && active && self.hovering && !self.mini && !self.pip && !show_controls
+    }
+}
+
+impl Drop for PlayerView {
+    fn drop(&mut self) {
+        if self.cursor_hidden {
+            objc2_app_kit::NSCursor::setHiddenUntilMouseMoves(false);
+        }
+    }
 }
 
 fn speed_label(s: f64) -> String {
@@ -130,6 +144,15 @@ impl Render for PlayerView {
         let mpv = pl.mpv();
         let vsize = pl.video_size;
         let show = self.controls_visible(paused) || mini && self.hovering;
+        let hide_cursor = self.should_hide_cursor(
+            !mini && !self.pip && crate::ui::app::is_fullscreen(window, cx),
+            window.is_window_active(),
+            show || loading || error.is_some(),
+        );
+        if hide_cursor != self.cursor_hidden && crate::macos::native_window(window).is_some() {
+            objc2_app_kit::NSCursor::setHiddenUntilMouseMoves(hide_cursor);
+            self.cursor_hidden = hide_cursor;
+        }
         let scale = window.scale_factor();
 
         // ── video surface ──

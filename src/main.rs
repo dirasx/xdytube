@@ -130,6 +130,7 @@ fn main() {
         .expect("failed to open window");
 
         macos::init_menu(main_window, cx);
+        macos::media_keys::init(cx);
         perf::mark("window open");
         cx.spawn(async move |cx| {
             use futures::StreamExt;
