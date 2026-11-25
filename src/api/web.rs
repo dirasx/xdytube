@@ -33,13 +33,13 @@ struct Session {
 fn session() -> &'static Mutex<Option<Session>> {
     static S: OnceLock<Mutex<Option<Session>>> = OnceLock::new();
     S.get_or_init(|| {
-        let s: Option<Session> = crate::store::kv_get("web_session").and_then(|s| serde_json::from_str(&s).ok());
+        let s: Option<Session> = crate::credentials::load("web_session");
         Mutex::new(s.filter(|s| has_login(&s.cookies)))
     })
 }
 
-fn save(s: &Option<Session>) {
-    crate::store::kv_set("web_session", &s.as_ref().map(|s| serde_json::to_string(s).unwrap_or_default()).unwrap_or_default());
+fn save(s: Option<&Session>) -> Result<()> {
+    crate::credentials::save("web_session", s)
 }
 
 fn has_login(c: &BTreeMap<String, String>) -> bool {
@@ -56,10 +56,11 @@ pub fn account_name() -> Option<String> {
     session().lock().as_ref().and_then(|s| s.account.clone())
 }
 
-pub fn disconnect() {
+pub fn disconnect() -> Result<()> {
     let mut s = session().lock();
+    save(None)?;
     *s = None;
-    save(&s);
+    Ok(())
 }
 
 /// Stores a set of youtube.com cookies and checks they belong to a signed-in account.
@@ -81,8 +82,13 @@ fn connect(cookies: BTreeMap<String, String>) -> Result<String> {
     let mut s = session().lock();
     if let Some(st) = s.as_mut() {
         st.account = Some(name.clone());
+        if let Err(error) = save(Some(st)) {
+            *s = None;
+            return Err(error);
+        }
+    } else {
+        return Err(anyhow!("The YouTube history connection was cancelled."));
     }
-    save(&s);
     Ok(name)
 }
 

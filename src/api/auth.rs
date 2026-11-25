@@ -43,14 +43,11 @@ pub struct DeviceCode {
 
 fn state() -> &'static Mutex<Option<Stored>> {
     static S: std::sync::OnceLock<Mutex<Option<Stored>>> = std::sync::OnceLock::new();
-    S.get_or_init(|| Mutex::new(crate::store::kv_get("auth").and_then(|s| serde_json::from_str(&s).ok())))
+    S.get_or_init(|| Mutex::new(crate::credentials::load("auth")))
 }
 
-fn persist(s: &Option<Stored>) {
-    match s {
-        Some(v) => crate::store::kv_set("auth", &serde_json::to_string(v).unwrap_or_default()),
-        None => crate::store::kv_set("auth", ""),
-    }
+fn persist(s: Option<&Stored>) -> Result<()> {
+    crate::credentials::save("auth", s)
 }
 
 pub fn signed_in() -> bool {
@@ -61,10 +58,11 @@ pub fn account() -> Option<Account> {
     state().lock().as_ref().and_then(|s| s.account.clone())
 }
 
-pub fn sign_out() {
+pub fn sign_out() -> Result<()> {
     let mut s = state().lock();
+    persist(None)?;
     *s = None;
-    persist(&s);
+    Ok(())
 }
 
 fn oauth_post(url: &str, body: Value) -> Result<(u16, Value)> {
@@ -121,21 +119,22 @@ pub fn poll_login(dc: &DeviceCode) -> Result<PollResult> {
     let expires = v.get("expires_in").and_then(Value::as_i64).unwrap_or(3600);
     {
         let mut s = state().lock();
-        *s = Some(Stored {
+        let next = Stored {
             access_token: access.to_string(),
             refresh_token: refresh.to_string(),
             expires_at: crate::api::json::now() + expires - 60,
             account: None,
-        });
-        persist(&s);
+        };
+        persist(Some(&next))?;
+        *s = Some(next);
     }
     let acc = fetch_account().unwrap_or_else(|_| Account { name: "YouTube account".into(), ..Default::default() });
     {
         let mut s = state().lock();
         if let Some(st) = s.as_mut() {
             st.account = Some(acc.clone());
+            let _ = persist(Some(st));
         }
-        persist(&s);
     }
     Ok(PollResult::Done(acc))
 }
@@ -157,16 +156,20 @@ pub fn access_token() -> Option<String> {
     if let Some(tok) = v.get("access_token").and_then(Value::as_str) {
         let exp = v.get("expires_in").and_then(Value::as_i64).unwrap_or(3600);
         let mut s = state().lock();
-        if let Some(st) = s.as_mut() {
-            st.access_token = tok.to_string();
-            st.expires_at = crate::api::json::now() + exp - 60;
-        }
-        persist(&s);
+        let st = s.as_ref().filter(|stored| stored.refresh_token == cur.refresh_token)?;
+        let mut updated = st.clone();
+        updated.access_token = tok.to_string();
+        updated.expires_at = crate::api::json::now() + exp - 60;
+        persist(Some(&updated)).ok()?;
+        *s = Some(updated);
         return Some(tok.to_string());
     }
     // the grant was revoked from the Google account page
     if status == 400 || status == 401 {
-        sign_out();
+        let mut s = state().lock();
+        if s.as_ref().is_some_and(|stored| stored.refresh_token == cur.refresh_token) && persist(None).is_ok() {
+            *s = None;
+        }
     }
     None
 }

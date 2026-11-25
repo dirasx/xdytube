@@ -1,6 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 mod api;
 mod assets;
+mod credentials;
 mod display;
 mod perf;
 mod recommend;
@@ -12,6 +13,7 @@ mod locale;
 #[cfg(target_os = "macos")]
 mod macos;
 mod player;
+mod profile;
 mod store;
 mod ui;
 mod updater;
@@ -70,6 +72,10 @@ fn main() {
         unsafe { std::env::set_var("PATH", path) };
     }
     perf::init();
+    if let Err(error) = store::prepare_data_dir() {
+        eprintln!("Could not open the xdytube profile: {error:#}");
+        std::process::exit(1);
+    }
     store::init();
     perf::mark("store");
     display::choose();

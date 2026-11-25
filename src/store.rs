@@ -358,29 +358,22 @@ pub fn data_dir() -> PathBuf {
             let _ = std::fs::create_dir_all(&d);
             return d;
         }
-        let base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
-        let d = base.join("StreamTube");
-        // carry over data from the app's previous name
-        let old = base.join("Ferrotube");
-        if !d.exists() && old.exists() {
-            let _ = std::fs::rename(&old, &d);
+        #[cfg(not(test))]
+        {
+            dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join("xdytube")
         }
-        let _ = std::fs::create_dir_all(&d);
-        // A -wal/-shm left without its database belongs to some other copy of it;
-        // SQLite would replay it onto whatever database is put there next and
-        // damage it, so drop it before anything opens the database.
-        if !d.join("streamtube.db").exists() {
-            let _ = std::fs::remove_file(d.join("streamtube.db-wal"));
-            let _ = std::fs::remove_file(d.join("streamtube.db-shm"));
-        }
-        if !d.join("streamtube.db").exists() && d.join("ferrotube.db").exists() {
-            for ext in ["", "-wal", "-shm"] {
-                let _ = std::fs::rename(d.join(format!("ferrotube.db{ext}")), d.join(format!("streamtube.db{ext}")));
-            }
-        }
-        d
     })
     .clone()
+}
+
+pub fn prepare_data_dir() -> Result<()> {
+    let path = data_dir();
+    if std::env::var_os("STREAMTUBE_DATA_DIR").is_some_and(|value| !value.is_empty()) || cfg!(test) {
+        std::fs::create_dir_all(path)?;
+        return Ok(());
+    }
+    let base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+    crate::profile::prepare(&path, &[&base.join("StreamTube"), &base.join("Ferrotube")])
 }
 
 const TABLES: &str = "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);

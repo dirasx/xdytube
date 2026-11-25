@@ -1078,6 +1078,7 @@ impl SettingsPage {
                         cx,
                     ))
                     .child(row("Export full backup", "", export_button("exp-all", "streamtube-backup.json", ExportKind::Backup, cx), cx))
+                    .child(row("Export diagnostics", "App version and playback settings", export_button("exp-diagnostics", "xdytube-diagnostics.json", ExportKind::Diagnostics, cx), cx))
                     .child(row("Export subscriptions (NewPipe JSON)", "", export_button("exp-np", "subscriptions.json", ExportKind::Subs, cx), cx))
                     .child(row("Export subscriptions (YouTube CSV)", "", export_button("exp-csv", "subscriptions.csv", ExportKind::Subs, cx), cx))
                     .child(row("Export subscriptions (OPML)", "For RSS readers", export_button("exp-opml", "subscriptions.opml", ExportKind::Subs, cx), cx)),
@@ -1130,6 +1131,7 @@ impl SettingsPage {
 #[derive(Clone, Copy)]
 enum ExportKind {
     Backup,
+    Diagnostics,
     Subs,
 }
 
@@ -1142,6 +1144,7 @@ fn export_button(id: &'static str, name: &'static str, kind: ExportKind, cx: &Ap
                 let p2 = path.clone();
                 let res = blocking(move || match kind {
                     ExportKind::Backup => crate::import::export_backup(&p2),
+                    ExportKind::Diagnostics => crate::import::export_diagnostics(&p2),
                     ExportKind::Subs => crate::import::export_subscriptions(&p2),
                 })
                 .await;

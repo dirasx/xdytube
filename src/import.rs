@@ -300,6 +300,23 @@ pub fn export_backup(path: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn export_diagnostics(path: &Path) -> Result<()> {
+    let settings = store::settings_snapshot();
+    let report = json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "os": std::env::consts::OS,
+        "architecture": std::env::consts::ARCH,
+        "playback": {
+            "quality_limit": settings.default_quality,
+            "hardware_decoding": settings.hwdec,
+            "audio_only": settings.audio_only,
+            "history_enabled": settings.history_enabled,
+        },
+    });
+    std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
+    Ok(())
+}
+
 pub fn export_subscriptions(path: &Path) -> Result<()> {
     let subs = store::subscriptions();
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
