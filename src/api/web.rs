@@ -246,6 +246,96 @@ fn watch_later_continuation_page(response: &Value) -> crate::api::types::Page {
     crate::api::innertube::collect_items(response)
 }
 
+pub struct EditablePlaylist {
+    pub page: crate::api::types::PlaylistPage,
+    pub entries: Vec<Option<String>>,
+    pub session: String,
+}
+
+fn editable_playlist_entries(response: &Value) -> Vec<(crate::api::types::VideoItem, Option<String>)> {
+    let mut renderers = Vec::new();
+    crate::api::json::find_all(response, "playlistVideoRenderer", &mut renderers);
+    renderers.into_iter().filter_map(|renderer| {
+        let video = crate::api::innertube::parse_video_renderer(renderer)?;
+        let id = renderer.get("setVideoId").and_then(Value::as_str).filter(|id| !id.is_empty()).map(str::to_owned);
+        Some((video, id))
+    }).collect()
+}
+
+fn playlist_remove_request(playlist_id: &str, entry_id: &str) -> Value {
+    json!({"playlistId": playlist_id, "actions": [{"action": "ACTION_REMOVE_VIDEO", "setVideoId": entry_id}]})
+}
+
+fn valid_ordinary_playlist_id(id: &str) -> bool {
+    id.len() >= 3 && id.len() <= 200 && id != "WL" && id != "LL"
+        && id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+}
+
+fn editable_list(response: &Value) -> Option<&Value> {
+    let list = crate::api::json::find(response, "playlistVideoListRenderer")?;
+    (list.get("isEditable").and_then(Value::as_bool) == Some(true)).then_some(list)
+}
+
+pub fn editable_playlist(playlist_id: &str) -> Result<Option<EditablePlaylist>> {
+    use crate::api::types::{PlaylistItem, PlaylistPage};
+    if !valid_ordinary_playlist_id(playlist_id) { return Ok(None); }
+    let _edit = WATCH_LATER_LOCK.lock();
+    let Some(session) = session_key() else { return Ok(None) };
+    let response = web_call("browse", json!({"browseId": format!("VL{playlist_id}")}))?;
+    if response.get("error").is_some() { return Err(anyhow!("YouTube could not load this playlist.")); }
+    let Some(list) = editable_list(&response) else { return Ok(None) };
+    let parsed = crate::api::innertube::collect_items(list);
+    let pairs = editable_playlist_entries(list);
+    let (videos, entries): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
+    let title = crate::api::json::find(&response, "playlistMetadataRenderer")
+        .and_then(|v| v.get("title")).and_then(Value::as_str).unwrap_or("Playlist").to_owned();
+    let info = PlaylistItem { id: playlist_id.into(), title, channel_name: account_name(),
+        thumbnail: videos.first().map(|v: &crate::api::types::VideoItem| v.thumbnail.clone()), ..Default::default() };
+    Ok(Some(EditablePlaylist { page: PlaylistPage { info, videos, continuation: parsed.continuation, description: None }, entries, session }))
+}
+
+pub fn editable_playlist_continue(token: &str, expected: &str) -> Result<(crate::api::types::Page, Vec<Option<String>>)> {
+    let _edit = WATCH_LATER_LOCK.lock();
+    if !session_matches(session_key().as_deref(), expected) { return Err(anyhow!("YouTube history account changed; reopen this playlist.")); }
+    let response = web_call("browse", json!({"continuation": token}))?;
+    if response.get("error").is_some() { return Err(anyhow!("YouTube could not load the next playlist page.")); }
+    let parsed = crate::api::innertube::collect_items(&response);
+    let (videos, entries): (Vec<_>, Vec<_>) = editable_playlist_entries(&response).into_iter().unzip();
+    let items = videos.into_iter().map(crate::api::types::Item::Video).collect();
+    let mut continuations = Vec::new();
+    crate::api::json::find_all(&response, "continuationItemRenderer", &mut continuations);
+    let continuation = parsed.continuation.or_else(|| continuations.into_iter().find_map(crate::api::innertube::continuation_token));
+    Ok((crate::api::types::Page { items, continuation }, entries))
+}
+
+fn playlist_has_entry(playlist_id: &str, video_id: &str, entry_id: &str) -> Result<bool> {
+    let mut response = web_call("browse", json!({"browseId": format!("VL{playlist_id}")}))?;
+    if response.get("error").is_some() || editable_list(&response).is_none() {
+        return Err(anyhow!("This playlist is not editable by the connected YouTube account."));
+    }
+    let mut seen = std::collections::HashSet::new();
+    loop {
+        if editable_playlist_entries(&response).iter().any(|(video, entry)| video.id == video_id && entry.as_deref() == Some(entry_id)) { return Ok(true); }
+        let mut continuations = Vec::new();
+        crate::api::json::find_all(&response, "continuationItemRenderer", &mut continuations);
+        let Some(token) = continuations.into_iter().find_map(crate::api::innertube::continuation_token) else { return Ok(false) };
+        if !seen.insert(token.clone()) { return Err(anyhow!("YouTube returned a repeated playlist page.")); }
+        response = web_call("browse", json!({"continuation": token}))?;
+        if response.get("error").is_some() { return Err(anyhow!("YouTube could not verify the playlist.")); }
+    }
+}
+
+pub fn remove_playlist_entry(playlist_id: &str, video_id: &str, entry_id: &str, expected: &str) -> Result<()> {
+    let _edit = WATCH_LATER_LOCK.lock();
+    if !valid_ordinary_playlist_id(playlist_id) || video_id.is_empty() || entry_id.is_empty() { return Err(anyhow!("Invalid playlist entry.")); }
+    if !session_matches(session_key().as_deref(), expected) { return Err(anyhow!("YouTube history account changed; reopen this playlist.")); }
+    if !playlist_has_entry(playlist_id, video_id, entry_id)? { return Err(anyhow!("This playlist entry is no longer available.")); }
+    let result = web_call("browse/edit_playlist", playlist_remove_request(playlist_id, entry_id))?;
+    if result.get("error").is_some() { return Err(anyhow!("YouTube could not update this playlist.")); }
+    if playlist_has_entry(playlist_id, video_id, entry_id)? { return Err(anyhow!("YouTube did not confirm removal.")); }
+    Ok(())
+}
+
 /// Adds or removes one item from the YouTube Watch later playlist.
 pub fn set_watch_later(video_id: &str, add: bool) -> Result<()> {
     set_watch_later_checked(video_id, add, None)
@@ -863,5 +953,38 @@ mod watch_later_tests {
         ]});
         assert_eq!(playlist_entry_id(&page, "video-123"), Some("entry-123".into()));
         assert_eq!(playlist_entry_id(&page, "missing"), None);
+    }
+}
+
+#[cfg(test)]
+mod editable_playlist_tests {
+    use super::{editable_list, editable_playlist_entries, remove_playlist_entry, playlist_remove_request, valid_ordinary_playlist_id};
+    use serde_json::json;
+
+    #[test]
+    fn keeps_distinct_entries_for_duplicate_videos() {
+        let data = json!({"playlistVideoListRenderer":{"isEditable":true,"contents":[
+            {"playlistVideoRenderer":{"videoId":"same","setVideoId":"entry-1","title":{"simpleText":"one"}}},
+            {"playlistVideoRenderer":{"videoId":"same","setVideoId":"entry-2","title":{"simpleText":"two"}}}
+        ]}});
+        let entries = editable_playlist_entries(&data);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].1.as_deref(), Some("entry-1"));
+        assert_eq!(entries[1].1.as_deref(), Some("entry-2"));
+        assert!(editable_list(&data).is_some());
+        assert!(editable_list(&json!({"playlistVideoListRenderer":{"isEditable":false}})).is_none());
+        assert!(editable_list(&json!({"playlistVideoListRenderer":{}})).is_none());
+        assert_eq!(playlist_remove_request("PLabc", "entry-2"), json!({
+            "playlistId":"PLabc","actions":[{"action":"ACTION_REMOVE_VIDEO","setVideoId":"entry-2"}]
+        }));
+    }
+
+    #[test]
+    fn refuses_stale_session_before_network_or_mutation() {
+        assert!(remove_playlist_entry("PLabc", "video", "entry", "stale-session").is_err());
+        assert!(remove_playlist_entry("WL", "video", "entry", "stale-session").is_err());
+        assert!(!valid_ordinary_playlist_id("WL"));
+        assert!(!valid_ordinary_playlist_id("../bad"));
+        assert!(valid_ordinary_playlist_id("PLabc-def_123"));
     }
 }

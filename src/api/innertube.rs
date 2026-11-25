@@ -186,7 +186,7 @@ pub(crate) fn parse_tile(t: &Value) -> Option<VideoItem> {
     })
 }
 
-fn parse_video_renderer(r: &Value) -> Option<VideoItem> {
+pub(crate) fn parse_video_renderer(r: &Value) -> Option<VideoItem> {
     if is_ad(r) {
         return None;
     }

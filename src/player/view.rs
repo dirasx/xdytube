@@ -149,9 +149,17 @@ impl Render for PlayerView {
             window.is_window_active(),
             show || loading || error.is_some(),
         );
-        if hide_cursor != self.cursor_hidden && crate::macos::native_window(window).is_some() {
-            objc2_app_kit::NSCursor::setHiddenUntilMouseMoves(hide_cursor);
-            self.cursor_hidden = hide_cursor;
+        if let Some(native_window) = crate::macos::native_window(window) {
+            // GPUI creates normal macOS windows with mouse-move delivery disabled.
+            // The player must receive movement after hiding the cursor so its
+            // controls can reappear without a click or keyboard event.
+            if !mini && !self.pip && !native_window.acceptsMouseMovedEvents() {
+                native_window.setAcceptsMouseMovedEvents(true);
+            }
+            if hide_cursor != self.cursor_hidden {
+                objc2_app_kit::NSCursor::setHiddenUntilMouseMoves(hide_cursor);
+                self.cursor_hidden = hide_cursor;
+            }
         }
         let scale = window.scale_factor();
 

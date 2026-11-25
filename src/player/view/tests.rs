@@ -45,6 +45,20 @@ fn fullscreen_cursor_follows_idle_controls(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn mouse_motion_restores_idle_player_controls(cx: &mut TestAppContext) {
+    use std::time::{Duration, Instant};
+    let (_, view, mut ui) = open_player(cx);
+    view.update(cx, |view, _| {
+        view.hovering = true;
+        view.show_until = Instant::now() - Duration::from_secs(1);
+        assert!(!view.controls_visible(false));
+    });
+    ui.update(|window, cx| window.draw(cx).clear(cx));
+    ui.simulate_mouse_move(point(px(450.0), px(260.0)), None, Modifiers::default());
+    assert!(view.read_with(cx, |view, _| view.controls_visible(false)));
+}
+
+#[gpui::test]
 fn seek_drag_ends_outside_the_track(cx: &mut TestAppContext) {
     let (player, view, mut ui) = open_player(cx);
     let track = view.read_with(cx, |view, _| view.seek_bounds.get());

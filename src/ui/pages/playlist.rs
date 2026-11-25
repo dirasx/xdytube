@@ -27,6 +27,9 @@ pub struct PlaylistPage {
     /// loaded through the signed-in account (continuations go there too)
     authed: bool,
     watch_later_session: Option<String>,
+    editable_session: Option<String>,
+    editable_entries: Vec<Option<String>>,
+    removing_entries: std::collections::HashSet<String>,
     filter: Option<Entity<gpui_kit::component::input::InputState>>,
     /// 0 playlist order, 1 title, 2 longest, 3 shortest, 4 channel
     sort: u8,
@@ -39,25 +42,32 @@ impl PlaylistPage {
         cx.spawn(async move |this, cx| {
             let res = blocking(move || {
                 if id == "WL" {
-                    return crate::api::web::watch_later_playlist().map(|(page, session)| (page, false, Some(session)));
+                    return crate::api::web::watch_later_playlist().map(|(page, session)| (page, false, Some(session), None));
+                }
+                if crate::api::web::connected() && let Ok(Some(editable)) = crate::api::web::editable_playlist(&id) {
+                    return Ok((editable.page, false, None, Some((editable.session, editable.entries))));
                 }
                 let own = matches!(id.as_str(), "WL" | "LL") || id.starts_with("LL");
                 let signed = crate::api::auth::signed_in();
                 if own && signed {
-                    return crate::api::auth::playlist(&id).map(|p| (p, true, None));
+                    return crate::api::auth::playlist(&id).map(|p| (p, true, None, None));
                 }
                 match innertube::playlist(&id) {
-                    Ok(p) if !p.videos.is_empty() || !signed => Ok((p, false, None)),
+                    Ok(p) if !p.videos.is_empty() || !signed => Ok((p, false, None, None)),
                     // private / unlisted: only the owner's account can see it
-                    other => crate::api::auth::playlist(&id).map(|p| (p, true, None)).or_else(|e| other.map(|p| (p, false, None)).map_err(|_| e)),
+                    other => crate::api::auth::playlist(&id).map(|p| (p, true, None, None)).or_else(|e| other.map(|p| (p, false, None, None)).map_err(|_| e)),
                 }
             })
             .await;
             let _ = this.update(cx, |this, cx| {
                 match res {
-                    Ok((p, authed, watch_later_session)) => {
+                    Ok((p, authed, watch_later_session, editable)) => {
                         this.authed = authed;
                         this.watch_later_session = watch_later_session;
+                        if let Some((session, entries)) = editable {
+                            this.editable_session = Some(session);
+                            this.editable_entries = entries;
+                        }
                         this.title = p.info.title.clone();
                         this.owner = p.info.channel_name.clone().map(|n| (n, p.info.channel_id.clone()));
                         this.count_text = p.info.video_count_text.clone();
@@ -126,6 +136,9 @@ impl PlaylistPage {
             info: None,
             authed: false,
             watch_later_session: None,
+            editable_session: None,
+            editable_entries: Vec::new(),
+            removing_entries: std::collections::HashSet::new(),
             filter: None,
             sort: 0,
         }
@@ -150,18 +163,30 @@ impl PlaylistPage {
         };
         let authed = self.authed;
         let watch_later_session = self.watch_later_session.clone();
+        let editable_session = self.editable_session.clone();
         cx.spawn(async move |this, cx| {
-            let res = blocking(move || if let Some(session) = watch_later_session { crate::api::web::watch_later_continue(&tok, &session) } else if authed { crate::api::auth::browse_continue(&tok) } else { innertube::browse_continue(&tok) }).await;
+            let res = blocking(move || {
+                if let Some(session) = editable_session {
+                    crate::api::web::editable_playlist_continue(&tok, &session).map(|(page, entries)| (page, Some(entries)))
+                } else if let Some(session) = watch_later_session {
+                    crate::api::web::watch_later_continue(&tok, &session).map(|page| (page, None))
+                } else if authed {
+                    crate::api::auth::browse_continue(&tok).map(|page| (page, None))
+                } else {
+                    innertube::browse_continue(&tok).map(|page| (page, None))
+                }
+            }).await;
             let _ = this.update(cx, |this, cx| {
                 this.loading_more = false;
                 match res {
-                    Ok(p) => {
+                    Ok((p, entries)) => {
                         if let Some(v) = this.videos.ready_mut() {
                             v.extend(p.items.into_iter().filter_map(|i| match i {
                                 Item::Video(v) => Some(v),
                                 _ => None,
                             }));
                         }
+                        if let Some(entries) = entries { this.editable_entries.extend(entries); }
                         this.continuation = p.continuation;
                     }
                     Err(_) => this.continuation = None,
@@ -210,6 +235,10 @@ impl Render for PlaylistPage {
         let thumb = videos.first().map(|v| v.thumbnail.clone());
         let local_id = if let Source::Local(id) = self.source { Some(id) } else { None };
         let watch_later = matches!(&self.source, Source::Remote(id) if id == "WL");
+        let editable_playlist_id = match &self.source {
+            Source::Remote(id) if self.editable_session.is_some() => Some(id.clone()),
+            _ => None,
+        };
         let remote_info = self.info.clone();
         let saved = remote_info.as_ref().map(|i| store::is_playlist_saved(&i.id)).unwrap_or(false);
         let owner = self.owner.clone();
@@ -344,6 +373,7 @@ impl Render for PlaylistPage {
                 for (i, v) in vs.iter().map(|(i, v)| (*i, v)) {
                     let vid = v.id.clone();
                     let remove_id = v.id.clone();
+                    let editable_entry = self.editable_entries.get(i).cloned().flatten();
                     let row = div()
                         .flex()
                         .items_center()
@@ -393,6 +423,34 @@ impl Render for PlaylistPage {
                                 this.reload_local();
                                 cx.notify();
                             })))
+                        })
+                        .when_some(editable_playlist_id.clone().zip(editable_entry), |d, (playlist_id, entry_id)| {
+                            let video_id = v.id.clone();
+                            d.child(icon_button(SharedString::from(format!("yt-rm-{i}")), "trash-2", cx)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    let Some(session) = this.editable_session.clone() else { return };
+                                    if !this.removing_entries.insert(entry_id.clone()) { return; }
+                                    let (playlist, video, entry) = (playlist_id.clone(), video_id.clone(), entry_id.clone());
+                                    cx.notify();
+                                    cx.spawn(async move |this, cx| {
+                                        let (p, v, e) = (playlist.clone(), video.clone(), entry.clone());
+                                        let result = blocking(move || crate::api::web::remove_playlist_entry(&p, &v, &e, &session)).await;
+                                        let _ = this.update(cx, |this, cx| {
+                                            this.removing_entries.remove(&entry);
+                                            match result {
+                                                Ok(()) => {
+                                                    if let Some(index) = this.editable_entries.iter().position(|id| id.as_deref() == Some(entry.as_str())) {
+                                                        this.editable_entries.remove(index);
+                                                        if let Some(videos) = this.videos.ready_mut() { if index < videos.len() { videos.remove(index); } }
+                                                    }
+                                                    toast(cx, "Removed from YouTube playlist");
+                                                }
+                                                Err(error) => toast(cx, format!("Could not remove from playlist: {}", crate::ui::friendly_error(&error.to_string()))),
+                                            }
+                                            cx.notify();
+                                        });
+                                    }).detach();
+                                })))
                         })
                         .when(watch_later, |d| {
                             d.child(icon_button(SharedString::from(format!("wl-rm-{i}")), "trash-2", cx)
