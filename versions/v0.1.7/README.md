@@ -1,5 +1,5 @@
-# Рабочая версия v0.1.7 — очередь и меню видео
+# Working version v0.1.7 — queue and video menu
 
-Основа — R0.1. Строки очереди ограничены доступной шириной с учётом номера видео. Из меню видео убран пункт «Remove from history».
+Based on R0.1. Queue rows are constrained to the available width, including the video number. The “Remove from history” option was removed from the video menu.
 
-Задачи: XDT-026, XDT-027. Прошли 46 тестов, 20 пропущены. Визуальная проверка очереди в приложении остаётся открытой.
+Tasks: XDT-026, XDT-027. Tests: 46 passed, 20 ignored. Visual verification of the queue remains open.

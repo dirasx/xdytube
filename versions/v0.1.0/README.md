@@ -1,15 +1,15 @@
-# Рабочая версия v0.1.0
+# Working version v0.1.0
 
-Основа — исходники форка `0.7.2-alpha.xdy.1`, коммит `c811140`. `0.1.0` — старт собственной нумерации xdytube.
+Based on fork `0.7.2-alpha.xdy.1`, commit `c811140`. This starts xdytube's own version numbering.
 
-## Изменения
+## Changes
 
-- Иконка macOS по варианту 4, коммит `64efde0`.
-- Выбор установленного браузера перед запуском подключения истории YouTube. Google Chrome и Яндекс Браузер отображаются отдельно, дубликаты одного браузера убираются. Коммит `1a6b94e`.
-- Правила работы, статус, журнал и задачи перенесены в структуру из `xdy-docsproduct`.
+- macOS icon based on variant 4, commit `64efde0`.
+- Browser selection before connecting YouTube watch history. Google Chrome and Yandex Browser are listed separately; duplicate entries are removed. Commit `1a6b94e`.
+- Project workflow, status, changelog, and tasks moved to the `xdy-docsproduct` structure.
 
-## Проверки
+## Validation
 
-- PNG иконки сравнили с исходным макетом. `.icns` собрали и прочитали штатным `iconutil`.
-- На Apple Silicon `cargo test --release --locked` прошёл с результатом 37 успешно, 20 пропущено. Тест выбора проверяет наличие обеих записей, сохранение правильных путей и исключение дубликатов.
-- На этом этапе оставались ручные проверки запуска обоих браузеров из интерфейса, синхронизации истории с реальным аккаунтом и иконки в Finder и Dock.
+- Compared the PNG icon with the original design and generated and inspected the `.icns` with `iconutil`.
+- `cargo test --release --locked` on Apple Silicon: 37 passed, 20 ignored. The browser-selection test checks both entries, paths, and deduplication.
+- At this stage, launching both browsers through the UI, synchronizing history with a real account, and the Finder and Dock icon remained to be checked manually.

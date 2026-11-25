@@ -1,5 +1,5 @@
-# v0.1.11 — установка обновлений
+# v0.1.11 — installing updates
 
-Рабочая версия, не релиз. Приложение проверяет опубликованные стабильные релизы GitHub при запуске и предлагает установить совместимую сборку для Apple Silicon в настройках. Перед заменой проверяются SHA-256 из GitHub API, структура архива, целостность подписи пакета, идентификатор, версия и архитектура. Предыдущая копия сохраняется для восстановления; профиль приложения не изменяется.
+A working version, not a release. The app checks published stable GitHub releases at startup and offers to install a compatible Apple Silicon build in settings. Before replacement, it checks the GitHub API SHA-256, archive structure, package signature integrity, identifier, version, and architecture. The previous app is retained for recovery; the user profile is not changed.
 
-Подпись приложения ad hoc: она подтверждает целостность пакета, но не является независимой подписью разработчика. Проверка источника опирается на HTTPS и метаданные GitHub. Настоящее обновление установленного приложения можно проверить после следующего выпуска.
+The app is ad hoc signed: this verifies package integrity but is not an independent developer signature. Source verification relies on HTTPS and GitHub metadata. A real installed-app update requires verification after a subsequent release.

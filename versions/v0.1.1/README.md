@@ -1,14 +1,14 @@
-# Рабочая версия v0.1.1
+# Working version v0.1.1
 
-Основа — рабочая версия [`v0.1.0`](../v0.1.0/README.md) и выпущенная альфа [`v0.0.1-alpha`](../../release-notes/R0.0.1-alpha.md).
+Based on [`v0.1.0`](../v0.1.0/README.md) and the published [`v0.0.1-alpha`](../../release-notes/R0.0.1-alpha.md).
 
-## Изменения
+## Changes
 
-- Подходящая сохранённая позиция применяется при открытии видео. Тумблер `Resume where you left off` удалён. Если ссылка содержит явный таймкод, он имеет приоритет.
-- Закрытие видео во время загрузки сохраняет прежний прогресс. Резервный поток использует позицию, запрошенную при открытии.
+- A suitable saved position is applied when a video opens. The `Resume where you left off` toggle was removed. An explicit timestamp in a link takes priority.
+- Closing a video while it loads preserves previous progress. A fallback stream uses the position requested when opening the video.
 
-## Проверки
+## Validation
 
-- До исправления регрессионный тест воспроизвёл замену `120 / 600` секунд на `0 / 0` при закрытии ещё загружающегося видео.
-- `cargo test --release --locked` на Apple Silicon — 40 прошли, 20 пропущены.
-- На этом этапе оставалось вручную проверить открытие из карточки с реальной историей YouTube и возобновление после перезапуска.
+- Before the fix, a regression test reproduced progress changing from `120 / 600` seconds to `0 / 0` when closing a loading video.
+- `cargo test --release --locked` on Apple Silicon: 40 passed, 20 ignored.
+- Opening from a card with real YouTube history and resuming after restart still required manual checks at this stage.

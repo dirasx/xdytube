@@ -1,3 +1,3 @@
-# v0.1.9 — фоновая проверка рабочей версии
+# v0.1.9 — background verification of working versions
 
-Рабочая версия, не релиз. Команда `bash scripts/test-working-version.sh v0.1.8` проверяет указанный зафиксированный коммит без открытия приложения, в отдельном каталоге сборки и с тестовым профилем. Результат сохраняется для локального дашборда. Автотесты не подтверждают работу с реальным аккаунтом и нативным интерфейсом.
+A working version, not a release. `bash scripts/test-working-version.sh v0.1.8` tests the selected committed version without opening the app, using a separate build directory and test profile. Results are saved for the local dashboard. Automated tests do not verify a real account or native UI.

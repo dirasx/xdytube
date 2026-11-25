@@ -1,5 +1,5 @@
-# Рабочая версия v0.1.8 — YouTube Watch Later
+# Working version v0.1.8 — YouTube Watch Later
 
-Основа — v0.1.7. Кнопка Watch Later и пункт меню сохраняют видео в список YouTube через подключённую браузерную сессию. В онлайн-списке добавлена кнопка удаления. Локальный Watch Later скрыт из библиотеки и диалога сохранения, его данные сохранены. Локальный Favorites остаётся.
+Based on v0.1.7. The Watch Later button and menu item save videos to YouTube through the connected browser session. A remove button was added to the online list. Local Watch Later is hidden from the library and save dialog, while its data is preserved. Local Favorites remains.
 
-Задача XDT-022. Прошли 48 тестов, 20 пропущены. Добавление и удаление с реальным подключённым аккаунтом требуют проверки до подтверждения задачи.
+Task: XDT-022. Tests: 48 passed, 20 ignored. Adding and removing videos with a connected real account still requires verification.

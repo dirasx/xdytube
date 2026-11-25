@@ -1,7 +1,7 @@
-# Рабочая задача v0.1.2 — профиль и Keychain
+# Working version v0.1.2 — profile and Keychain
 
-Основа — [`v0.1.1`](../v0.1.1/README.md). Профиль xdytube выделен в собственный каталог и использует свой файл запущенного экземпляра. При первом запуске переносится согласованный снимок старой SQLite, включая историю, подписки, плейлисты и прогресс, а также настройки. Исходный профиль остаётся доступен для отката.
+Based on [`v0.1.1`](../v0.1.1/README.md). xdytube uses its own profile directory and instance file. On first launch it migrates an agreed snapshot of the previous SQLite database, including history, subscriptions, playlists, progress, and settings. The original profile remains available for rollback.
 
-Два вида входа в YouTube нужно подключить заново. Новые данные входа хранятся в macOS Keychain, раздельно для каждого профиля. Экспорт диагностики содержит только версию, платформу и отдельные параметры воспроизведения.
+Both YouTube sign-ins must be reconnected. New credentials are stored in macOS Keychain and separated by profile. Diagnostic exports contain only the version, platform, and selected playback settings.
 
-В тестовом профиле проверены чтение данных из WAL, повторный запуск без перезаписи нового прогресса, сохранение старого профиля и откат при ошибке миграции. Раздельное удаление записей проверено с тестовым хранилищем. В реальном macOS Keychain проверены запись, чтение из нового процесса и удаление синтетической записи. Ручной вход с реальным аккаунтом и поведение Keychain при обновлении подписанной сборки требуют отдельной проверки.
+Tests covered WAL data, restart without overwriting new progress, preservation of the old profile, and rollback after migration errors. Separate credential deletion was tested with a test store. Synthetic Keychain credentials were written, read from a new process, and deleted on macOS. Real-account sign-in and Keychain behavior during a signed-app update required separate manual verification.

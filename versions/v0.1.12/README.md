@@ -1,3 +1,3 @@
-# v0.1.12 — безопасная сессия Watch Later
+# v0.1.12 — consistent Watch Later session
 
-Рабочая версия, не релиз. Watch Later читается и редактируется через одну подключённую браузерную сессию. При смене сессии открытый список нельзя использовать для удаления. Продолжения списка не фильтруют видео как домашнюю ленту, отключение выполняется в фоне. Проверка с реальным аккаунтом, включая пустой список, остаётся открытой.
+A working version, not a release. Watch Later is read and edited through the same connected browser session. If the session changes, the open list cannot be used to delete videos. Continuation pages are not filtered like the home feed, and disconnect runs in the background. Testing with a real account, including an empty list, remains open.

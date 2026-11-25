@@ -1,3 +1,3 @@
-# v0.1.10 — проверка обновлений
+# v0.1.10 — update checks
 
-Рабочая версия, не релиз. Настройки приложения проверяют последний опубликованный релиз GitHub и позволяют повторить проверку. Автоматическая загрузка и установка пока не реализованы.
+A working version, not a release. App settings check the latest published GitHub release and allow a repeat check. Automatic download and installation were not yet implemented at this stage.

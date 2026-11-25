@@ -1,47 +1,46 @@
-# История изменений xdytube
+# xdytube changelog
 
-## R0.2 · 25 ноября 2026 года (МСК)
+## R0.2 · November 25, 2026 (Moscow time)
 
-- Версия пакета `0.2.0` для Apple Silicon; рабочие версии `v0.1.7`–`v0.1.12`.
-- Обновлены Watch Later и меню видео, исправлено отображение очереди, добавлены фоновая проверка версий и обновление приложения.
-- [Загрузка](https://github.com/dirasx/xdytube/releases/tag/R0.2) · [Заметка о выпуске](release-notes/R0.2.md) · [Снимок исходников](published-source/R0.2/README.md)
+- Package version `0.2.0` for Apple Silicon; working versions `v0.1.7`–`v0.1.12`.
+- Updated Watch Later and the video menu, improved the queue layout, and added background version checks and app updates.
+- [Download](https://github.com/dirasx/xdytube/releases/tag/R0.2) · [Release notes](release-notes/R0.2.md) · [Source snapshot](published-source/R0.2/README.md)
 
-## R0.1 · 25 ноября 2026 года (МСК)
+## R0.1 · November 25, 2026 (Moscow time)
 
-- Версия пакета `0.1.0` для Apple Silicon. Включены рабочие версии `v0.1.1`–`v0.1.6`.
-- Возобновление воспроизведения, отдельный профиль с хранением входов в Keychain, сборка только для Apple Silicon, обновлённый цвет логотипа, управление плеером в macOS и доработанное подключение истории YouTube.
-- [Загрузка](https://github.com/dirasx/xdytube/releases/tag/R0.1) · [Заметка о выпуске](release-notes/R0.1.md)
+- Package version `0.1.0` for Apple Silicon, including working versions `v0.1.1`–`v0.1.6`.
+- Playback resume, a separate profile with Keychain sign-ins, Apple Silicon-only builds, updated wordmark color, macOS player controls, and improved YouTube history connection.
+- [Download](https://github.com/dirasx/xdytube/releases/tag/R0.1) · [Release notes](release-notes/R0.1.md)
 
-## v0.1.4 · рабочая задача
+## v0.1.4 · Working version
 
-- Цвет `tube` соответствует иконке варианта 4 в обеих темах. [Рабочая задача](versions/v0.1.4/README.md)
+- The `tube` color matches icon variant 4 in both themes. [Details](versions/v0.1.4/README.md)
 
-## v0.1.3 · рабочая задача
+## v0.1.3 · Working version
 
-- Сборка и CI оставлены для macOS Apple Silicon. Кандидат на релиз собирается явным запуском workflow. [Рабочая задача](versions/v0.1.3/README.md)
+- Builds and CI target macOS Apple Silicon; release candidates use an explicitly triggered workflow. [Details](versions/v0.1.3/README.md)
 
-## v0.1.2 · рабочая задача
+## v0.1.2 · Working version
 
-- Выделен профиль xdytube, добавлена миграция локальных данных и хранение новых входов в Keychain. [Рабочая задача](versions/v0.1.2/README.md)
+- Added a separate xdytube profile, local data migration, and Keychain storage for new sign-ins. [Details](versions/v0.1.2/README.md)
 
-## v0.1.1 · рабочая версия
+## v0.1.1 · Working version
 
-- Возобновление частично просмотренных видео теперь включено постоянно. Плеер сохраняет позицию при раннем закрытии видео и при смене потока на резервный. [Рабочая версия](versions/v0.1.1/README.md)
+- Resuming partially watched videos is always enabled. The player preserves position when a loading video closes and when switching to a fallback stream. [Details](versions/v0.1.1/README.md)
 
-## v0.0.1-alpha · альфа-релиз от 25 ноября 2026 года (МСК)
+## v0.0.1-alpha · November 25, 2026 (Moscow time)
 
-- Опубликован ZIP для macOS arm64 из рабочей версии `v0.1.0` с новой иконкой и выбором браузера для подключения истории YouTube.
-- [Загрузка](https://github.com/dirasx/xdytube/releases/tag/v0.0.1-alpha) · [Заметка о выпуске](release-notes/R0.0.1-alpha.md)
+- Published the macOS arm64 ZIP based on working version `v0.1.0`, with a new icon and browser selection for YouTube history connection.
+- [Download](https://github.com/dirasx/xdytube/releases/tag/v0.0.1-alpha) · [Release notes](release-notes/R0.0.1-alpha.md)
 
-## v0.1.0 · рабочая версия
+## v0.1.0 · Working version
 
-- Начата собственная нумерация версий xdytube.
-- В macOS используется иконка варианта 4. Она также отображается внутри приложения и в README.
-- Кнопка `Connect` в настройках истории YouTube открывает список установленных поддерживаемых браузеров. Выбрать можно в том числе Google Chrome и Яндекс Браузер, если они установлены. При ошибке можно выбрать другой браузер.
+- Started xdytube's own version numbering and adopted macOS icon variant 4 for the app and README.
+- YouTube watch history `Connect` offers installed supported browsers, including Google Chrome and Yandex Browser. Another browser can be selected after an error.
 
-## 0.7.2-alpha.xdy.1 · опубликованный пререлиз от 25 ноября 2026 года (МСК)
+## 0.7.2-alpha.xdy.1 · Prerelease, November 25, 2026 (Moscow time)
 
-- Первый пакет xdytube для Apple Silicon на базе Stream Tube Desktop `0.7.2-alpha`.
-- Хронологическая сетка подписок, Watch Later из аккаунта YouTube, отдельный полноэкранный режим видео, настройка автоматического мини-плеера и обработка превью 4:3.
-- Подключение отправки истории YouTube через отдельный временный профиль Яндекс Браузера.
-- [Архив и контрольная сумма](https://github.com/dirasx/xdytube/releases/tag/xdytube-0.7.2-alpha.xdy.1)
+- First xdytube package for Apple Silicon, based on Stream Tube Desktop `0.7.2-alpha`.
+- Chronological subscription grid, YouTube account Watch Later, separate video fullscreen mode, optional automatic miniplayer, and 4:3 thumbnail handling.
+- YouTube history connection through a separate temporary Yandex Browser profile.
+- [Archive and checksum](https://github.com/dirasx/xdytube/releases/tag/xdytube-0.7.2-alpha.xdy.1)

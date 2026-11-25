@@ -1,7 +1,7 @@
-# Опубликованные исходники xdytube R0.1
+# Published xdytube R0.1 source
 
-Архив создан из коммита `3cf62fa7d5b42e297f1f613b81917b64de1de11f`, на который указывает тег `R0.1`. Все 82 файла побайтово сверены с Git. [Заметка о выпуске](../../release-notes/R0.1.md)
+The archive was created from `3cf62fa7d5b42e297f1f613b81917b64de1de11f`, the commit referenced by tag `R0.1`. All 82 files were compared byte for byte with Git. [Release notes](../../release-notes/R0.1.md)
 
-Предыдущие архивы в `published-source/` исключены из снимка. В него также не вошли `.git`, локальные варианты дизайна, файлы кандидата, временный тестовый профиль, пользовательская база и файлы сессий. Текстовые файлы проверены на распространённые форматы секретов и абсолютные пути домашних каталогов.
+Previous archives in `published-source/` were excluded, along with `.git`, local design variants, candidate files, temporary test profiles, user databases, and session files. Text files were checked for common secret formats and absolute home-directory paths.
 
-[Архив исходников](xdytube-R0.1-source.tar.gz) · [Контрольная сумма SHA-256](SHA256SUMS.txt)
+[Source archive](xdytube-R0.1-source.tar.gz) · [SHA-256 checksum](SHA256SUMS.txt)

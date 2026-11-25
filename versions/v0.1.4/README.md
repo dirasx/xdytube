@@ -1,5 +1,5 @@
-# Рабочая задача v0.1.4 — цвет надписи xdytube
+# Working version v0.1.4 — xdytube wordmark color
 
-Основа — [`v0.1.3`](../v0.1.3/README.md). Часть `tube` использует оттенки из иконки варианта 4. В тёмной теме применяется `#9184C0`, в светлой — `#514A77`. Цвет интерфейсного акцента можно менять независимо.
+Based on [`v0.1.3`](../v0.1.3/README.md). The `tube` portion uses colors from icon variant 4: `#9184C0` in dark mode and `#514A77` in light mode. The interface accent can be changed independently.
 
-Контраст надписи на фоне верхней панели проверен для обеих тем — `5.72:1` в тёмной и `8.09:1` в светлой.
+Contrast against the top bar was checked in both themes: `5.72:1` in dark mode and `8.09:1` in light mode.

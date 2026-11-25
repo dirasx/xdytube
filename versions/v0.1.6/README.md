@@ -1,5 +1,5 @@
-# Рабочая версия v0.1.6 — подключение истории YouTube
+# Working version v0.1.6 — YouTube history connection
 
-Основа — [v0.1.5](../v0.1.5/README.md). При долгом подключении отображается подсказка о проверке сети и смене VPN-сервера. Для каждой попытки создаётся отдельный временный профиль браузера, который удаляется после закрытия. Остатки прежних попыток убираются при запуске приложения.
+Based on [v0.1.5](../v0.1.5/README.md). A prompt suggests checking the network or changing VPN servers when connecting takes too long. Each attempt uses a separate temporary browser profile, removed after the browser closes. Leftovers from previous attempts are cleaned up at startup.
 
-Задачи: XDT-009, XDT-012.
+Tasks: XDT-009, XDT-012.
