@@ -619,7 +619,6 @@ impl SettingsPage {
                 switch("auto-miniplayer", s.auto_miniplayer, |s, v| s.auto_miniplayer = v, cx),
                 cx,
             ))
-            .child(row("Resume where you left off", "", switch("resume", s.resume_playback, |s, v| s.resume_playback = v, cx), cx))
             .child(row("Loop videos by default", "", switch("loop", s.loop_video, |s, v| s.loop_video = v, cx), cx))
             .child(row("Audio only mode", "", switch("ao", s.audio_only, |s, v| s.audio_only = v, cx), cx))
             .child(row("Hardware decoding", "Takes effect after restart", switch("hw", s.hwdec, |s, v| s.hwdec = v, cx), cx))

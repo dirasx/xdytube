@@ -56,6 +56,7 @@ pub struct Player {
     ambient_tick: u32,
     pub loop_video: bool,
     load_serial: u64,
+    load_start: Option<f64>,
     last_progress_save: f64,
     pub storyboard: Option<Storyboard>,
     last_prop_notify: std::time::Instant,
@@ -71,6 +72,60 @@ impl EventEmitter<PlayerEvent> for Player {}
 
 pub struct PlayerHandle(pub Entity<Player>);
 impl Global for PlayerHandle {}
+
+#[cfg(test)]
+mod resume_tests {
+    use super::{Player, VideoItem, resume_position, store};
+    use gpui_kit::{AppContext, TestAppContext};
+
+    #[gpui::test]
+    fn stopping_a_loading_video_preserves_saved_progress(cx: &mut TestAppContext) {
+        let video = VideoItem { id: "resume-loading-test".into(), ..Default::default() };
+        store::history_merge_remote(&video, 120.0, 600.0, 0);
+        assert_eq!(store::progress_map().get(&video.id), Some(&(120.0, 600.0)));
+
+        cx.update(|cx| {
+            let player = cx.new(Player::new);
+            player.update(cx, |player, cx| {
+                player.video = Some(video.clone());
+                player.loading = true;
+                player.stop(cx);
+            });
+        });
+
+        let saved = store::progress_map().get(&video.id).copied();
+        store::history_remove(&video.id);
+        assert_eq!(saved, Some((120.0, 600.0)));
+    }
+
+    #[test]
+    fn saved_position_is_used_unless_an_explicit_time_takes_priority() {
+        assert_eq!(resume_position(None, Some((120.0, 600.0))), Some(120.0));
+        assert_eq!(resume_position(Some(0.0), Some((120.0, 600.0))), Some(0.0));
+        assert_eq!(resume_position(Some(42.0), Some((120.0, 600.0))), Some(42.0));
+        assert_eq!(resume_position(None, Some((5.0, 600.0))), None);
+        assert_eq!(resume_position(None, Some((590.0, 600.0))), None);
+    }
+
+    #[gpui::test]
+    fn retry_keeps_the_requested_position_before_playback_starts(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let player = cx.new(Player::new);
+            player.update(cx, |player, _| {
+                player.load_start = Some(120.0);
+                assert_eq!(player.retry_position(), Some(120.0));
+            });
+        });
+    }
+}
+
+fn resume_position(explicit: Option<f64>, saved: Option<(f64, f64)>) -> Option<f64> {
+    explicit.or_else(|| {
+        saved.and_then(|(position, duration)| {
+            (position > 10.0 && (duration <= 0.0 || position < duration - 15.0)).then_some(position)
+        })
+    })
+}
 
 pub fn player(cx: &App) -> Entity<Player> {
     cx.global::<PlayerHandle>().0.clone()
@@ -140,6 +195,7 @@ impl Player {
             ambient_tick: 0,
             loop_video: s.loop_video,
             load_serial: 0,
+            load_start: None,
             last_progress_save: 0.0,
             storyboard: None,
             last_prop_notify: std::time::Instant::now(),
@@ -381,8 +437,7 @@ impl Player {
     fn on_time(&mut self, cx: &mut Context<Self>) {
         let t = self.time;
         // progress save
-        if (t - self.last_progress_save).abs() >= 5.0 {
-            self.save_progress(false);
+        if (t - self.last_progress_save).abs() >= 5.0 && self.save_progress(false) {
             let id = self.video.as_ref().map(|v| v.id.clone());
             if let Some(id) = id {
                 cx.default_global::<crate::ui::cards::Watched>().0.insert(id, (t, self.duration));
@@ -464,14 +519,15 @@ impl Player {
         self.sb_prompt = prompt;
     }
 
-    pub fn save_progress(&mut self, force: bool) {
-        if let Some(v) = &self.video {
-            if force || self.time > 0.0 {
-                store::history_progress(&v.id, self.time, self.duration);
-                self.last_progress_save = self.time;
-                crate::api::web::report_progress(&v.id, self.time, !self.paused);
-            }
+    pub fn save_progress(&mut self, force: bool) -> bool {
+        let Some(video) = &self.video else { return false };
+        if self.loading || self.error.is_some() || self.init_error.is_some() || (!force && self.time <= 0.0) {
+            return false;
         }
+        store::history_progress(&video.id, self.time, self.duration);
+        self.last_progress_save = self.time;
+        crate::api::web::report_progress(&video.id, self.time, !self.paused);
+        true
     }
 
     /// Starts playing a video. Fetches streams, SponsorBlock segments and resumes progress.
@@ -515,15 +571,9 @@ impl Player {
         crate::api::web::report_start(&video.id, self.duration);
         let s = store::settings_snapshot();
         let id = video.id.clone();
-        let resume = if start.is_some() {
-            start
-        } else if s.resume_playback {
-            store::progress_map().get(&id).and_then(|(p, d)| {
-                (*p > 10.0 && (*d <= 0.0 || *p < d - 15.0)).then_some(*p)
-            })
-        } else {
-            None
-        };
+        let saved = if start.is_none() { store::progress_map().get(&id).copied() } else { None };
+        let resume = resume_position(start, saved);
+        self.load_start = resume;
         cx.notify();
         if s.annotations {
             self.load_annotations(cx);
@@ -628,7 +678,7 @@ impl Player {
         let Some(id) = self.video.as_ref().map(|v| v.id.clone()) else { return };
         streams::invalidate(&id);
         let serial = self.load_serial;
-        let resume = (self.time > 1.0).then_some(self.time);
+        let resume = self.retry_position();
         cx.spawn(async move |this, cx| {
             let res = blocking(move || streams::ytdlp_streams(&id)).await;
             let _ = this.update(cx, |p, cx| {
@@ -652,6 +702,10 @@ impl Player {
             });
         })
         .detach();
+    }
+
+    fn retry_position(&self) -> Option<f64> {
+        self.load_start.or_else(|| (self.time > 1.0).then_some(self.time))
     }
 
     /// (Re)loads current streams into mpv with current quality/audio settings.
@@ -678,6 +732,7 @@ impl Player {
             return;
         };
         let was_paused = self.paused;
+        self.load_start = start;
         let mut opts = vec![format!("speed={}", self.speed)];
         if let Some(t) = start.filter(|t| *t > 0.0) {
             opts.push(format!("start={t}"));
