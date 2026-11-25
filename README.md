@@ -10,7 +10,7 @@ Download the ZIP from [GitHub Releases](https://github.com/dirasx/xdytube/releas
 
 This fork includes a chronological subscription grid, an account Watch Later shortcut, a separate video fullscreen mode, an optional automatic miniplayer, and corrected 4:3 thumbnails. The current source lets you choose an installed browser, including Chrome or Yandex Browser, when connecting YouTube watch history. The sign-in flow uses a separate temporary browser profile.
 
-The current source uses a separate xdytube profile and migrates local settings and playback history on first start. It stores new YouTube sign-ins in macOS Keychain. The published alpha still uses the Stream Tube profile.
+Starting with R0.1, xdytube uses its own profile and migrates local settings and playback history on first start. It stores new YouTube sign-ins in macOS Keychain. Reconnect both YouTube sign-ins after updating from the alpha.
 
 ## Source and license
 
