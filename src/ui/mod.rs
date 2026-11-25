@@ -395,6 +395,7 @@ pub fn logo(size: Pixels) -> Img {
 /// "xdytube" wordmark next to the logo.
 pub fn wordmark(cx: &App) -> Div {
     let p = pal(cx);
+    let wordmark_purple = rgb(if p.dark { 0x9184c0 } else { 0x514a77 });
     div()
         .flex()
         .items_baseline()
@@ -402,5 +403,5 @@ pub fn wordmark(cx: &App) -> Div {
         .text_lg()
         .font_weight(FontWeight::BOLD)
         .child(div().text_color(p.text).child("xdy"))
-        .child(div().text_color(p.accent).child("tube"))
+        .child(div().text_color(wordmark_purple).child("tube"))
 }
