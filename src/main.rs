@@ -83,6 +83,7 @@ fn main() {
     if links::forward_to_running(&arg) {
         return;
     }
+    api::web::clean_up_sign_in_profiles();
     let (incoming_tx, mut incoming_rx) = futures::channel::mpsc::unbounded();
     let _ = links::listen(incoming_tx.clone());
     perf::mark("links");

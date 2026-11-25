@@ -345,6 +345,22 @@ pub struct WebLoginFlow {
     browser: Option<&'static str>,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     attempt: u64,
+    show_network_hint: bool,
+}
+
+const WEB_SIGN_IN_HINT_DELAY: std::time::Duration = std::time::Duration::from_secs(25);
+
+fn web_sign_in_needs_hint(elapsed: std::time::Duration) -> bool {
+    elapsed >= WEB_SIGN_IN_HINT_DELAY
+}
+
+#[cfg(test)]
+#[::core::prelude::v1::test]
+fn browser_sign_in_shows_network_hint_after_waiting() {
+    use std::time::Duration;
+
+    assert!(!web_sign_in_needs_hint(Duration::from_secs(24)));
+    assert!(web_sign_in_needs_hint(Duration::from_secs(25)));
 }
 
 pub fn open_web_sign_in(cx: &mut App) {
@@ -357,6 +373,7 @@ pub fn open_web_sign_in(cx: &mut App) {
             a.web_login.browsers = crate::api::web::installed_browsers();
             a.web_login.browser = None;
             a.web_login.error = None;
+            a.web_login.show_network_hint = false;
             a.dialog = Some(Dialog::WebSignIn);
             cx.notify();
         });
@@ -804,16 +821,23 @@ impl AppView {
         self.web_login.cancel = Some(cancel.clone());
         self.web_login.error = None;
         self.web_login.browser = Some(browser.name);
+        self.web_login.show_network_hint = false;
         cx.notify();
         // closing the dialog any way at all stops the sign-in and closes the browser
         let watch = cancel.clone();
+        let started = std::time::Instant::now();
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(std::time::Duration::from_millis(700)).await;
             if watch.load(Ordering::Relaxed) {
                 return;
             }
-            let open = this.update(cx, |t, _| {
-                t.web_login.attempt == attempt && t.web_login.cancel.is_some() && matches!(t.dialog, Some(Dialog::WebSignIn))
+            let open = this.update(cx, |t, cx| {
+                let open = t.web_login.attempt == attempt && t.web_login.cancel.is_some() && matches!(t.dialog, Some(Dialog::WebSignIn));
+                if open && !t.web_login.show_network_hint && web_sign_in_needs_hint(started.elapsed()) {
+                    t.web_login.show_network_hint = true;
+                    cx.notify();
+                }
+                open
             }).unwrap_or(false);
             if !open {
                 watch.store(true, Ordering::Relaxed);
@@ -840,7 +864,12 @@ impl AppView {
                     }
                     Err(e) => {
                         if !cancel.load(Ordering::Relaxed) {
-                            t.web_login.error = Some(crate::ui::friendly_error(&format!("{e:#}")));
+                            t.web_login.error = Some(if e.is::<crate::api::web::SignInTimeout>() {
+                                t.web_login.show_network_hint = true;
+                                e.to_string()
+                            } else {
+                                crate::ui::friendly_error(&format!("{e:#}"))
+                            });
                         }
                     }
                 }
@@ -917,7 +946,9 @@ impl AppView {
                 })))
                 .child(div().flex().items_center().justify_between().child(cookies_link).child(cancel));
         }
-        col.into_any_element()
+        col.when(self.web_login.show_network_hint, |d| {
+            d.child(div().text_sm().text_color(p.text2).child(crate::api::web::SIGN_IN_NETWORK_HINT))
+        }).into_any_element()
     }
 
     fn render_sign_in(&self, cx: &mut Context<Self>) -> AnyElement {

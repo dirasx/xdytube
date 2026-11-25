@@ -15,7 +15,9 @@ use anyhow::{Context, Result, anyhow};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::fs::{self, File, OpenOptions, Permissions};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, mpsc};
 use std::time::{Duration, Instant};
@@ -23,6 +25,18 @@ use std::time::{Duration, Instant};
 const WEB_VERSION: &str = "2.20251120.01.00";
 const ORIGIN: &str = "https://www.youtube.com";
 const SIGN_IN_URL: &str = "https://accounts.google.com/ServiceLogin?service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26next%3Dhttps%253A%252F%252Fwww.youtube.com%252F";
+pub const SIGN_IN_NETWORK_HINT: &str = "If Google sign-in is stuck or the connection closed, check your network. If you use a VPN, try another server and start Connect again.";
+
+#[derive(Debug)]
+pub struct SignInTimeout;
+
+impl std::fmt::Display for SignInTimeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Sign-in timed out.")
+    }
+}
+
+impl std::error::Error for SignInTimeout {}
 
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 struct Session {
@@ -290,15 +304,50 @@ fn youtube_cookies(list: &[Value]) -> BTreeMap<String, String> {
     out
 }
 
+const SIGN_IN_PROFILE_PREFIX: &str = "attempt-";
+
+fn open_sign_in_profiles(data_dir: &Path) -> Result<(PathBuf, File)> {
+    let root = data_dir.join("signin-profiles");
+    fs::DirBuilder::new().recursive(true).mode(0o700).create(&root)?;
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .mode(0o600)
+        .open(root.join("lock"))?;
+    lock.try_lock().context("another browser sign-in is using this xdytube profile")?;
+
+    // The lock covers both cleanup and the lifetime of each attempt.
+    for entry in fs::read_dir(&root)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() && entry.file_name().to_string_lossy().starts_with(SIGN_IN_PROFILE_PREFIX) {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
+    let _ = fs::remove_dir_all(data_dir.join("signin-browser"));
+    Ok((root, lock))
+}
+
+pub fn clean_up_sign_in_profiles() {
+    let _ = open_sign_in_profiles(&crate::store::data_dir());
+}
+
+fn new_sign_in_profile(root: &Path) -> std::io::Result<tempfile::TempDir> {
+    tempfile::Builder::new()
+        .prefix(SIGN_IN_PROFILE_PREFIX)
+        .permissions(Permissions::from_mode(0o700))
+        .tempdir_in(root)
+}
+
 /// Opens a browser window for the user to sign in to YouTube and waits until they
 /// have. Returns the account name. `cancel` stops waiting and closes the browser.
 pub fn browser_sign_in(browser: Browser, cancel: Arc<AtomicBool>) -> Result<String> {
-    let profile = crate::store::data_dir().join("signin-browser");
-    let _ = std::fs::remove_dir_all(&profile);
-    std::fs::create_dir_all(&profile)?;
+    let (root, _lock) = open_sign_in_profiles(&crate::store::data_dir())?;
+    let profile = new_sign_in_profile(&root)?;
     let port = std::net::TcpListener::bind(("127.0.0.1", 0))?.local_addr()?.port();
     let mut cmd = std::process::Command::new(&browser.executable);
-    cmd.arg(format!("--user-data-dir={}", profile.display()))
+    cmd.arg(format!("--user-data-dir={}", profile.path().display()))
         .arg(format!("--remote-debugging-port={port}"))
         .arg("--remote-allow-origins=http://127.0.0.1")
         .args(["--no-first-run", "--no-default-browser-check", "--disable-sync", "--new-window"])
@@ -319,7 +368,7 @@ pub fn browser_sign_in(browser: Browser, cancel: Arc<AtomicBool>) -> Result<Stri
             break Err(anyhow!("The browser was closed before sign-in finished."));
         }
         if started.elapsed() > Duration::from_secs(20 * 60) {
-            break Err(anyhow!("Sign-in timed out."));
+            break Err(SignInTimeout.into());
         }
         let Ok(list) = cdp_cookies(port) else { continue };
         let cookies = youtube_cookies(&list);
@@ -337,7 +386,7 @@ pub fn browser_sign_in(browser: Browser, cancel: Arc<AtomicBool>) -> Result<Stri
     let _ = child.kill();
     let _ = child.wait();
     for _ in 0..8 {
-        if std::fs::remove_dir_all(&profile).is_ok() || !profile.exists() {
+        if fs::remove_dir_all(profile.path()).is_ok() || !profile.path().exists() {
             break;
         }
         std::thread::sleep(Duration::from_millis(500));
@@ -608,5 +657,39 @@ mod host_tests {
         assert!(!is_youtube_https("https://youtube.com.evil.example/api"));
         assert!(!is_youtube_https("https://www.youtube.com@evil.example/api"));
         assert!(!is_youtube_https("https://evilyoutube.com/api"));
+    }
+}
+
+#[cfg(test)]
+mod browser_profile_tests {
+    use super::{open_sign_in_profiles, new_sign_in_profile};
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn each_attempt_has_a_private_profile_and_stale_profiles_are_cleaned() {
+        let data = tempfile::tempdir().unwrap();
+        let (root, lock) = open_sign_in_profiles(data.path()).unwrap();
+        let first = new_sign_in_profile(&root).unwrap();
+        let second = new_sign_in_profile(&root).unwrap();
+        assert_ne!(first.path(), second.path());
+        assert_eq!(first.path().metadata().unwrap().permissions().mode() & 0o777, 0o700);
+        assert!(open_sign_in_profiles(data.path()).is_err());
+
+        let finished = first.path().to_path_buf();
+        first.close().unwrap();
+        assert!(!finished.exists());
+        let stale = second.keep();
+        let unrelated = root.join("other-file");
+        let ordinary = root.join("other-directory");
+        std::fs::write(&unrelated, b"keep").unwrap();
+        std::fs::create_dir(&ordinary).unwrap();
+        std::fs::create_dir(data.path().join("signin-browser")).unwrap();
+        drop(lock);
+
+        let _guard = open_sign_in_profiles(data.path()).unwrap();
+        assert!(!stale.exists());
+        assert!(!data.path().join("signin-browser").exists());
+        assert!(unrelated.exists());
+        assert!(ordinary.exists());
     }
 }
